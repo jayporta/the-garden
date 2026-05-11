@@ -4,9 +4,18 @@ import { useFormStatus } from "react-dom";
 
 type ButtonTheme = "primary";
 
-export function SubmitButton({ theme }: { theme: ButtonTheme }) {
+export function SubmitButton({
+  theme,
+  disabled,
+  label,
+}: {
+  theme: ButtonTheme;
+  disabled?: boolean;
+  label?: string;
+}) {
   const { pending } = useFormStatus();
 
+  const isDisabled = disabled ?? pending;
   const themeClasses = {
     // primary: "hover:bg-blue-600 disabled:bg-gray-200",
     primary:
@@ -16,10 +25,10 @@ export function SubmitButton({ theme }: { theme: ButtonTheme }) {
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={isDisabled}
       className={`${themeClasses[theme]} py-2 px-10 rounded-3xl outline-1 w-fit h-fit`}
     >
-      {pending ? "Processing..." : "Submit"}
+      {label ?? (pending ? "Processing..." : "Submit")}
     </button>
   );
 }
