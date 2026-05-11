@@ -19,48 +19,6 @@ const isUrl = (value: string) => {
   }
 };
 
-const extractTextFromHtml = (html: string) => {
-  const cleaned = html
-    .replace(/<script[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style[\s\S]*?<\/style>/gi, " ")
-    .replace(/<!--.*?-->/gs, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  return cleaned.slice(0, 3000);
-};
-
-const fetchPageContext = async (url: string) => {
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; TheGardenBot/1.0)",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      },
-    });
-
-    if (!res.ok) {
-      return `Unable to retrieve the page at ${url}. HTTP status: ${res.status}`;
-    }
-
-    const html = await res.text();
-    const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-    const descriptionMatch = html.match(
-      /<meta\s+name=["']description["']\s+content=["']([\s\S]*?)["']\s*\/?>/i,
-    );
-    const title = titleMatch?.[1]?.trim() ?? "(no title found)";
-    const description =
-      descriptionMatch?.[1]?.trim() ?? "(no description found)";
-    const bodyText = extractTextFromHtml(html);
-
-    return `Web page title: ${title}\nDescription: ${description}\nExtracted page text:\n${bodyText}`;
-  } catch (error) {
-    return `Unable to retrieve the page at ${url}. Error: ${error instanceof Error ? error.message : "unknown"}`;
-  }
-};
-
 const getLastUserText = (messages: any[]) => {
   const lastUserMessage = [...messages]
     .reverse()
@@ -83,18 +41,15 @@ export async function POST(req: Request) {
   const messages = Array.isArray(body.messages) ? body.messages : [];
   const userText = getLastUserText(messages);
 
-  const pageContext = isUrl(userText) ? await fetchPageContext(userText) : "";
-
   // Create or connect source if URL
   let sourceId: string | undefined;
   if (isUrl(userText)) {
     const source = await prisma.source.upsert({
-      where: { url: userText },
-      update: {},
+      where: { url: userText, id: crypto.randomUUID() },
+      update: { createdAt: new Date() },
       create: {
         type: "url",
         url: userText,
-        rawText: pageContext,
       },
     });
     sourceId = source.id;
@@ -110,18 +65,18 @@ export async function POST(req: Request) {
 
   const systemInstructions = [
     `
-You are a document analysis assistant. Do not behave like a casual chat bot.
-Always read the user's submission and provide a concise summary, key findings, and an analytical perspective.
-- For plain text, summarize the key points, tone, and any useful actions or insights.
-- For URLs, summarize the linked page using the page content fetched from the URL.
-- For PDF or image attachments, base your response on the attached content and summarize what was read.
-- Keep the response focused on analysis, not on small talk.
-`,
+    You are a document analysis assistant. Do not behave like a casual chat bot.
+    Always read the user's submission and provide a concise summary, key findings, and an analytical perspective.
+    - For plain text, summarize the key points, tone, and any useful actions or insights.
+    - For URLs, summarize the linked page using the page content fetched from the URL.
+    - For PDF or image attachments, base your response on the attached content and summarize what was read.
+    - Keep the response focused on analysis, not on small talk.
+    `,
   ];
 
-  if (pageContext) {
+  if (isUrl(userText)) {
     systemInstructions.push(
-      `The user supplied a URL. Here is the extracted web page context:\n${pageContext}`,
+      `The user supplied a URL. Visit the URL and summarize what is on the page ${userText}`,
     );
   }
 
@@ -135,7 +90,7 @@ Always read the user's submission and provide a concise summary, key findings, a
   let errorMessage: string | undefined;
 
   try {
-    const result = await streamText({
+    const result = streamText({
       model: provider(process.env.OPENAI_MODEL ?? "gpt-4o-mini"),
       system: systemInstructions.join("\n\n"),
       messages: modelMessages,
@@ -147,8 +102,8 @@ Always read the user's submission and provide a concise summary, key findings, a
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (value.type === "text-delta") {
-        summaryText += value.delta;
+      if (value.type === "text-delta" && value.text) {
+        summaryText += value.text;
       }
     }
 

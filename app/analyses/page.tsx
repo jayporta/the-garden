@@ -27,6 +27,19 @@ export default function AnalysesPage() {
     fetchAnalyses();
   }, []);
 
+  const fetchAnalyses = async () => {
+    try {
+      const res = await fetch("/api/analyses");
+      if (!res.ok) throw new Error("Failed to fetch analyses");
+      const data = await res.json();
+      setAnalyses(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const deleteAnalysis = async (id: string) => {
     if (!confirm("Are you sure you want to delete this analysis?")) return;
 
@@ -130,7 +143,7 @@ export default function AnalysesPage() {
                 )}
               </div>
 
-              {analysis.summary && (
+              {analysis.summary && analysis.summary.text && (
                 <div>
                   <h3 className="font-semibold text-lg mb-1">Summary</h3>
                   <p className="text-gray-800 whitespace-pre-wrap">
