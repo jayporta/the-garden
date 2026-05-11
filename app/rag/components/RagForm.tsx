@@ -78,7 +78,7 @@ export default function RagForm() {
   return (
     <div className="flex flex-col gap-5">
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <div className="flex gap-4">
+        <div className="flex gap-4 max-w-lg">
           <textarea
             name="entry"
             value={input}
@@ -87,7 +87,7 @@ export default function RagForm() {
             disabled={isLoading}
             className="aspect-square border rounded-md text-black flex-1 p-3 disabled:cursor-not-allowed disabled:bg-slate-100"
           />
-          <div className="aspect-square flex-1 border rounded-md">
+          <div className="aspect-square flex-1 border rounded-md p-3">
             {!dragging && files?.length ? (
               <button
                 className="flex-1 justify-center items-center bg-green-100 h-full w-full"

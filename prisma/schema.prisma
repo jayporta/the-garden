@@ -8,9 +8,9 @@ datasource db {
 }
 
 model Source {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   type      String    // "url", "pdf", "image", "text"
-  url       String?
+  url       String?   @unique
   filename  String?
   rawText   String?
   createdAt DateTime  @default(now())
@@ -18,7 +18,7 @@ model Source {
 }
 
 model Request {
-  id        String    @id @default(cuid())
+  id        String    @id @default(uuid())
   sourceId  String?
   inputText String
   source    Source?   @relation(fields: [sourceId], references: [id])
@@ -28,7 +28,7 @@ model Request {
 }
 
 model Summary {
-  id        String   @id @default(cuid())
+  id        String   @id @default(uuid())
   requestId String   @unique
   text      String
   insights  String?
