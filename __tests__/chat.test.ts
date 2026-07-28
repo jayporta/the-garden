@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Mock the AI SDK
-vi.mock("ai", () => ({
-  streamText: vi.fn(),
-  convertToModelMessages: vi.fn(),
-}));
+// Mock the AI SDK, keeping real type guards/helpers (isTextUIPart, etc.) intact.
+vi.mock("ai", async () => {
+  const actual = await vi.importActual<typeof import("ai")>("ai");
+  return {
+    ...actual,
+    streamText: vi.fn(),
+    convertToModelMessages: vi.fn(),
+  };
+});
 
 vi.mock("@ai-sdk/openai", () => ({
   createOpenAI: vi.fn(),
@@ -12,22 +16,28 @@ vi.mock("@ai-sdk/openai", () => ({
 }));
 
 // Mock PrismaClient
-const mockCreate = vi.fn();
-const mockUpdate = vi.fn();
+const mockSourceUpsert = vi.fn();
+const mockSourceCreate = vi.fn();
+const mockRequestCreate = vi.fn();
+const mockRequestUpdate = vi.fn();
+const mockSummaryCreate = vi.fn();
 
 vi.mock("@/app/generated/prisma/client", () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
-    source: {
-      create: mockCreate,
-    },
-    request: {
-      create: mockCreate,
-      update: mockUpdate,
-    },
-    summary: {
-      create: mockCreate,
-    },
-  })),
+  PrismaClient: vi.fn().mockImplementation(function () {
+    return {
+      source: {
+        upsert: mockSourceUpsert,
+        create: mockSourceCreate,
+      },
+      request: {
+        create: mockRequestCreate,
+        update: mockRequestUpdate,
+      },
+      summary: {
+        create: mockSummaryCreate,
+      },
+    };
+  }),
 }));
 
 vi.mock("@prisma/adapter-pg", () => ({
@@ -38,41 +48,49 @@ vi.mock("pg", () => ({
   Pool: vi.fn(),
 }));
 
-// Mock fetch
-const mockFetch = vi.fn();
-global.fetch = mockFetch;
+/**
+ * Builds a fake `streamText` result whose `fullStream` yields a single
+ * text-delta chunk, matching the shape `POST` reads via `getReader()`.
+ */
+const mockStreamTextResult = (text: string) => ({
+  fullStream: new ReadableStream({
+    start(controller) {
+      controller.enqueue({ type: "text-delta", text });
+      controller.close();
+    },
+  }),
+  toUIMessageStreamResponse: vi
+    .fn()
+    .mockReturnValue(new Response("streamed response")),
+});
 
 describe("/api/chat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockRequestCreate.mockResolvedValue({ id: "request-id" });
+    mockRequestUpdate.mockResolvedValue({ id: "request-id" });
+    mockSummaryCreate.mockResolvedValue({ id: "summary-id" });
   });
 
-  it("should handle URL input and create database records", async () => {
-    // Mock fetch response for URL content
-    mockFetch.mockResolvedValue({
-      ok: true,
-      text: () => Promise.resolve("<html><body>Test content</body></html>"),
-    });
+  it("should upsert a Source and create a Request for URL input", async () => {
+    const { streamText, convertToModelMessages } = await import("ai");
+    (streamText as any).mockReturnValue(mockStreamTextResult("Summary"));
+    (convertToModelMessages as any).mockResolvedValue([]);
 
-    // Mock AI stream
-    const mockStream = {
-      toDataStreamResponse: vi
-        .fn()
-        .mockReturnValue(new Response("streamed response")),
-    };
-    const { streamText } = await import("ai");
-    (streamText as any).mockResolvedValue(mockStream);
-
-    // Mock database operations
-    mockCreate.mockResolvedValue({ id: "source-id" });
-    mockUpdate.mockResolvedValue({ id: "request-id" });
+    mockSourceUpsert.mockResolvedValue({ id: "source-id" });
 
     const { POST } = await import("@/app/api/chat/route");
 
     const request = new Request("http://localhost/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        messages: [{ role: "user", content: "Analyze https://example.com" }],
+        messages: [
+          {
+            id: "1",
+            role: "user",
+            parts: [{ type: "text", text: "https://example.com" }],
+          },
+        ],
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -80,28 +98,40 @@ describe("/api/chat", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(mockFetch).toHaveBeenCalledWith("https://example.com");
-    expect(mockCreate).toHaveBeenCalled(); // Source created
-    expect(mockUpdate).toHaveBeenCalled(); // Request updated
+    expect(mockSourceUpsert).toHaveBeenCalledWith({
+      where: { url: "https://example.com" },
+      update: { createdAt: expect.any(Date) },
+      create: { type: "url", url: "https://example.com" },
+    });
+    expect(mockRequestCreate).toHaveBeenCalledWith({
+      data: { inputText: "https://example.com", sourceId: "source-id" },
+    });
+    expect(mockSummaryCreate).toHaveBeenCalledWith({
+      data: { requestId: "request-id", text: "Summary" },
+    });
+    expect(mockRequestUpdate).toHaveBeenCalledWith({
+      where: { id: "request-id" },
+      data: { status: "completed" },
+    });
   });
 
-  it("should handle non-URL input", async () => {
-    const mockStream = {
-      toDataStreamResponse: vi
-        .fn()
-        .mockReturnValue(new Response("streamed response")),
-    };
-    const { streamText } = await import("ai");
-    (streamText as any).mockResolvedValue(mockStream);
-
-    mockCreate.mockResolvedValue({ id: "request-id" });
+  it("should create a Request without a Source for plain text input", async () => {
+    const { streamText, convertToModelMessages } = await import("ai");
+    (streamText as any).mockReturnValue(mockStreamTextResult("Summary"));
+    (convertToModelMessages as any).mockResolvedValue([]);
 
     const { POST } = await import("@/app/api/chat/route");
 
     const request = new Request("http://localhost/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        messages: [{ role: "user", content: "Analyze this text directly" }],
+        messages: [
+          {
+            id: "1",
+            role: "user",
+            parts: [{ type: "text", text: "Analyze this text directly" }],
+          },
+        ],
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -109,19 +139,77 @@ describe("/api/chat", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
-    expect(mockFetch).not.toHaveBeenCalled();
-    expect(mockCreate).toHaveBeenCalled();
+    expect(mockSourceUpsert).not.toHaveBeenCalled();
+    expect(mockSourceCreate).not.toHaveBeenCalled();
+    expect(mockRequestCreate).toHaveBeenCalledWith({
+      data: { inputText: "Analyze this text directly", sourceId: undefined },
+    });
   });
 
-  it("should handle errors gracefully", async () => {
-    mockFetch.mockRejectedValue(new Error("Network error"));
+  it("should store an uploaded file as a Source", async () => {
+    const { streamText, convertToModelMessages } = await import("ai");
+    (streamText as any).mockReturnValue(mockStreamTextResult("Summary"));
+    (convertToModelMessages as any).mockResolvedValue([]);
+
+    mockSourceCreate.mockResolvedValue({ id: "source-id" });
 
     const { POST } = await import("@/app/api/chat/route");
 
     const request = new Request("http://localhost/api/chat", {
       method: "POST",
       body: JSON.stringify({
-        messages: [{ role: "user", content: "Analyze https://example.com" }],
+        messages: [
+          {
+            id: "1",
+            role: "user",
+            parts: [
+              {
+                type: "file",
+                mediaType: "application/pdf",
+                filename: "report.pdf",
+                url: "data:application/pdf;base64,AAAA",
+              },
+            ],
+          },
+        ],
+      }),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(mockSourceCreate).toHaveBeenCalledWith({
+      data: {
+        type: "pdf",
+        filename: "report.pdf",
+        rawText: "data:application/pdf;base64,AAAA",
+      },
+    });
+    expect(mockRequestCreate).toHaveBeenCalledWith({
+      data: { inputText: "", sourceId: "source-id" },
+    });
+  });
+
+  it("should mark the Request failed and return 500 on model errors", async () => {
+    const { streamText, convertToModelMessages } = await import("ai");
+    (streamText as any).mockImplementation(() => {
+      throw new Error("Network error");
+    });
+    (convertToModelMessages as any).mockResolvedValue([]);
+
+    const { POST } = await import("@/app/api/chat/route");
+
+    const request = new Request("http://localhost/api/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        messages: [
+          {
+            id: "1",
+            role: "user",
+            parts: [{ type: "text", text: "https://example.com" }],
+          },
+        ],
       }),
       headers: { "Content-Type": "application/json" },
     });
@@ -130,6 +218,10 @@ describe("/api/chat", () => {
     const result = await response.json();
 
     expect(response.status).toBe(500);
-    expect(result.error).toBeDefined();
+    expect(result.error).toBe("Network error");
+    expect(mockRequestUpdate).toHaveBeenCalledWith({
+      where: { id: "request-id" },
+      data: { status: "failed" },
+    });
   });
 });
