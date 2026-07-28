@@ -1,4 +1,11 @@
-import { convertToModelMessages, streamText } from "ai";
+import {
+  convertToModelMessages,
+  isFileUIPart,
+  isTextUIPart,
+  streamText,
+  type FileUIPart,
+  type UIMessage,
+} from "ai";
 import { createOpenAI, openai as defaultOpenAI } from "@ai-sdk/openai";
 import { PrismaClient } from "@/app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -10,6 +17,11 @@ const prisma = new PrismaClient({
   ),
 });
 
+/**
+ * Checks whether a string is an absolute http(s) URL.
+ * @param value - The string to test.
+ * @returns `true` if `value` parses as an `http:`/`https:` URL.
+ */
 const isUrl = (value: string) => {
   try {
     const url = new URL(value);
@@ -19,33 +31,55 @@ const isUrl = (value: string) => {
   }
 };
 
-const getLastUserText = (messages: any[]) => {
-  const lastUserMessage = [...messages]
-    .reverse()
-    .find((message) => message.role === "user");
-  if (!lastUserMessage || !Array.isArray(lastUserMessage.parts)) {
-    return "";
-  }
+/**
+ * Finds the most recent user-authored message in a chat history.
+ * @param messages - The full message history from the request body.
+ */
+const getLastUserMessage = (messages: UIMessage[]) =>
+  [...messages].reverse().find((message) => message.role === "user");
 
-  return lastUserMessage.parts
-    .filter(
-      (part: any) => part.type === "text" && typeof part.text === "string",
-    )
-    .map((part: any) => part.text)
+/**
+ * Concatenates the text parts of a message into a single trimmed string.
+ * @param message - The message to read text from, if any.
+ */
+const getMessageText = (message: UIMessage | undefined) =>
+  (message?.parts ?? [])
+    .filter(isTextUIPart)
+    .map((part) => part.text)
     .join(" ")
     .trim();
+
+/**
+ * Returns the first uploaded file attached to a message, if any.
+ * @param message - The message to read file parts from, if any.
+ */
+const getMessageFile = (message: UIMessage | undefined) =>
+  (message?.parts ?? []).find(isFileUIPart);
+
+/**
+ * Maps an uploaded file's IANA media type to a `Source.type` value.
+ * @param file - The uploaded file part.
+ */
+const sourceTypeForFile = (file: FileUIPart) => {
+  if (file.mediaType === "application/pdf") return "pdf";
+  if (file.mediaType.startsWith("image/")) return "image";
+  return "text";
 };
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const messages = Array.isArray(body.messages) ? body.messages : [];
-  const userText = getLastUserText(messages);
+  const messages: UIMessage[] = Array.isArray(body.messages)
+    ? body.messages
+    : [];
+  const lastUserMessage = getLastUserMessage(messages);
+  const userText = getMessageText(lastUserMessage);
+  const userFile = getMessageFile(lastUserMessage);
 
-  // Create or connect source if URL
+  // Create or connect a Source for URL or uploaded-file submissions.
   let sourceId: string | undefined;
   if (isUrl(userText)) {
     const source = await prisma.source.upsert({
-      where: { url: userText, id: crypto.randomUUID() },
+      where: { url: userText },
       update: { createdAt: new Date() },
       create: {
         type: "url",
@@ -53,9 +87,18 @@ export async function POST(req: Request) {
       },
     });
     sourceId = source.id;
+  } else if (userFile) {
+    const source = await prisma.source.create({
+      data: {
+        type: sourceTypeForFile(userFile),
+        filename: userFile.filename,
+        rawText: userFile.url,
+      },
+    });
+    sourceId = source.id;
   }
 
-  // Create request
+  // Create request (createdAt is stamped automatically via the schema default)
   const request = await prisma.request.create({
     data: {
       inputText: userText,

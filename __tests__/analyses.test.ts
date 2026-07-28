@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { GET, DELETE } from "@/app/api/analyses/route";
 
 // Mock PrismaClient
 const mockFindMany = vi.fn();
@@ -7,15 +6,17 @@ const mockDeleteMany = vi.fn();
 const mockDelete = vi.fn();
 
 vi.mock("@/app/generated/prisma/client", () => ({
-  PrismaClient: vi.fn().mockImplementation(() => ({
-    request: {
-      findMany: mockFindMany,
-      delete: mockDelete,
-    },
-    summary: {
-      deleteMany: mockDeleteMany,
-    },
-  })),
+  PrismaClient: vi.fn().mockImplementation(function () {
+    return {
+      request: {
+        findMany: mockFindMany,
+        delete: mockDelete,
+      },
+      summary: {
+        deleteMany: mockDeleteMany,
+      },
+    };
+  }),
 }));
 
 vi.mock("@prisma/adapter-pg", () => ({
@@ -27,8 +28,12 @@ vi.mock("pg", () => ({
 }));
 
 describe("/api/analyses", () => {
-  beforeEach(() => {
+  let GET: typeof import("@/app/api/analyses/route").GET;
+  let DELETE: typeof import("@/app/api/analyses/route").DELETE;
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    ({ GET, DELETE } = await import("@/app/api/analyses/route"));
   });
 
   describe("GET", () => {
@@ -50,7 +55,10 @@ describe("/api/analyses", () => {
       const result = await response.json();
 
       expect(response.status).toBe(200);
-      expect(result).toEqual(mockAnalyses);
+      // Response.json() serializes Date fields to ISO strings.
+      expect(result).toEqual([
+        { ...mockAnalyses[0], createdAt: mockAnalyses[0].createdAt.toISOString() },
+      ]);
       expect(mockFindMany).toHaveBeenCalledWith({
         include: {
           source: true,
