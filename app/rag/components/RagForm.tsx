@@ -1,18 +1,22 @@
-"use client";
-import { useMemo, useState } from "react";
-import { Chat, useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
-import { SubmitButton } from "@/app/components/SubmitButton";
+'use client';
+import { useMemo, useState } from 'react';
+import { Chat, useChat } from '@ai-sdk/react';
+import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai';
+import { SubmitButton } from '@/app/components/SubmitButton';
 
+/**
+ * Submission form for RAG-light: accepts pasted text, a URL, or a dropped
+ * PDF/image, posts it to `/api/chat`, and renders the streamed reply.
+ */
 export default function RagForm() {
-  const [input, setInput] = useState("");
+  const [input, setInput] = useState('');
   const [dragging, setDragging] = useState(false);
   const [files, setFiles] = useState<FileList | null>(null);
 
   const chat = useMemo(
     () =>
       new Chat({
-        transport: new DefaultChatTransport({ api: "/api/chat" }),
+        transport: new DefaultChatTransport({ api: '/api/chat' }),
         messages: [],
       }),
     [],
@@ -63,17 +67,20 @@ export default function RagForm() {
       files: files?.length ? files : undefined,
     });
 
-    setInput("");
+    setInput('');
     setFiles(null);
   };
 
-  const isLoading = status === "submitted" || status === "streaming";
+  const isLoading = status === 'submitted' || status === 'streaming';
 
-  const renderMessageText = (message: any) =>
+  // `isTextUIPart` is the AI SDK's own type guard, so `part.text` narrows
+  // without a cast. Joined without a separator because a message's text parts
+  // are contiguous (multiple parts come from multi-step generation).
+  const renderMessageText = (message: UIMessage) =>
     message.parts
-      ?.filter((part: any) => part.type === "text")
-      .map((part: any) => part.text)
-      .join("") || "";
+      .filter(isTextUIPart)
+      .map((part) => part.text)
+      .join('');
 
   return (
     <div className="flex flex-col gap-5">
@@ -99,8 +106,8 @@ export default function RagForm() {
               <div
                 className={`h-full ${
                   dragging
-                    ? "border-dashed border-blue-500 bg-blue-50"
-                    : "border-gray-300"
+                    ? 'border-dashed border-blue-500 bg-blue-50'
+                    : 'border-gray-300'
                 }`}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -121,8 +128,8 @@ export default function RagForm() {
                   {files?.length
                     ? Array.from(files)
                         .map((file) => file.name)
-                        .join(", ")
-                    : "Drop file here or choose a PDF/image"}
+                        .join(', ')
+                    : 'Drop file here or choose a PDF/image'}
                 </label>
               </div>
             )}
@@ -132,7 +139,7 @@ export default function RagForm() {
         <SubmitButton
           theme="primary"
           disabled={isLoading}
-          label={isLoading ? "Processing..." : "Submit"}
+          label={isLoading ? 'Processing...' : 'Submit'}
         />
       </form>
 
@@ -154,9 +161,9 @@ export default function RagForm() {
           <div
             key={message.id}
             className={`rounded-xl p-4 ${
-              message.role === "assistant"
-                ? "bg-blue-50 border border-blue-200"
-                : "bg-gray-100 border border-gray-200"
+              message.role === 'assistant'
+                ? 'bg-blue-50 border border-blue-200'
+                : 'bg-gray-100 border border-gray-200'
             }`}
           >
             <div className="text-xs font-semibold uppercase text-slate-500">

@@ -10,7 +10,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 - `npm run dev` — start dev server (Next.js 16, App Router)
 - `npm run build` / `npm run start` — production build / serve
-- `npm run lint` — ESLint (flat config in `eslint.config.mjs`)
+- `npm run lint` — ESLint (flat config in `eslint.config.mjs`); `npm run lint:fix` to autofix
+- `npm run format` — Prettier write; `npm run format:check` to verify without writing
 - `npm test` — run vitest once (it's not in watch mode by default from this script)
 - `npx vitest run __tests__/chat.test.ts` — run a single test file
 - `npx prisma migrate dev` — create/apply a migration after editing `prisma/schema.prisma`
@@ -40,6 +41,13 @@ This is an experimental playground app ("The Garden") with one real feature so f
 **Styling:** Tailwind v4 via the `@tailwindcss/postcss` plugin (no `tailwind.config.*`); `app/components/SubmitButton.tsx` shows the `light-dark()` CSS function pattern used for theme-aware colors.
 
 ## Code Style
+
+The mechanical rules below are enforced, not just documented: **Prettier**
+(`prettier.config.mjs`) owns indentation, semicolons and quotes, while
+**ESLint** (`eslint.config.mjs`) owns the rules a formatter cannot express —
+JSDoc on exports, one component per file, no inline `style` props.
+`eslint-config-prettier` is applied last so the two never fight. Run
+`npm run format && npm run lint` before committing.
 
 - 2-space indentation.
 - Semicolons required.
