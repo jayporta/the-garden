@@ -1,6 +1,6 @@
-import { PrismaClient } from "@/app/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+import { PrismaClient } from '@/app/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg(
@@ -8,6 +8,10 @@ const prisma = new PrismaClient({
   ),
 });
 
+/**
+ * Lists every past analysis, newest first, with its `Source` and `Summary`.
+ * @returns A JSON array of `Request` rows, or a 500 error payload.
+ */
 export async function GET() {
   try {
     const analyses = await prisma.request.findMany({
@@ -16,26 +20,31 @@ export async function GET() {
         summary: true,
       },
       orderBy: {
-        createdAt: "desc",
+        createdAt: 'desc',
       },
     });
 
     return Response.json(analyses);
-  } catch (error) {
+  } catch {
     return Response.json(
-      { error: "Failed to fetch analyses" },
+      { error: 'Failed to fetch analyses' },
       { status: 500 },
     );
   }
 }
 
+/**
+ * Deletes one analysis and its summary.
+ * @param req - Request whose JSON body carries the `Request` row's `id`.
+ * @returns `{ success: true }`, or a 400/500 error payload.
+ */
 export async function DELETE(req: Request) {
   try {
     const { id } = await req.json();
 
     if (!id) {
       return Response.json(
-        { error: "Analysis ID is required" },
+        { error: 'Analysis ID is required' },
         { status: 400 },
       );
     }
@@ -51,9 +60,9 @@ export async function DELETE(req: Request) {
     });
 
     return Response.json({ success: true });
-  } catch (error) {
+  } catch {
     return Response.json(
-      { error: "Failed to delete analysis" },
+      { error: 'Failed to delete analysis' },
       { status: 500 },
     );
   }

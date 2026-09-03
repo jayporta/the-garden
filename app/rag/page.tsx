@@ -1,6 +1,9 @@
-import RagForm from "@/app/rag/components/RagForm";
-import Link from "next/link";
+import RagForm from '@/app/rag/components/RagForm';
+import Link from 'next/link';
 
+/**
+ * The `/rag` route: RAG-light submission form plus a link to past analyses.
+ */
 export default function Page() {
   return (
     <div className="flex flex-col gap-4 mt-4">

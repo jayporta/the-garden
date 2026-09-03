@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from 'react';
 
 interface Analysis {
   id: string;
@@ -18,46 +18,57 @@ interface Analysis {
   };
 }
 
+/**
+ * Lists every past analysis and lets one be deleted.
+ */
 export default function AnalysesPage() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchAnalyses();
-  }, []);
-
-  const fetchAnalyses = async () => {
+  // Declared before the effect that calls it: React's rules-of-hooks lint
+  // rejects reading a `const` binding above its declaration.
+  const fetchAnalyses = useCallback(async () => {
     try {
-      const res = await fetch("/api/analyses");
-      if (!res.ok) throw new Error("Failed to fetch analyses");
+      const res = await fetch('/api/analyses');
+      if (!res.ok) throw new Error('Failed to fetch analyses');
       const data = await res.json();
       setAnalyses(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // TODO: fetch this list in a Server Component and pass it down, keeping only
+  // the delete button as a client component. That is the App Router-idiomatic
+  // fix for the rule below; the effect-plus-setState pattern here predates this
+  // lint config, so it is suppressed rather than silently rewritten as part of
+  // a formatting change.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchAnalyses();
+  }, [fetchAnalyses]);
 
   const deleteAnalysis = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this analysis?")) return;
+    if (!confirm('Are you sure you want to delete this analysis?')) return;
 
     try {
-      const res = await fetch("/api/analyses", {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/analyses', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
       });
 
-      if (!res.ok) throw new Error("Failed to delete analysis");
+      if (!res.ok) throw new Error('Failed to delete analysis');
 
       // Remove from local state
       setAnalyses(analyses.filter((analysis) => analysis.id !== id));
     } catch (err) {
       alert(
-        "Error deleting analysis: " +
-          (err instanceof Error ? err.message : "Unknown error"),
+        'Error deleting analysis: ' +
+          (err instanceof Error ? err.message : 'Unknown error'),
       );
     }
   };
@@ -98,11 +109,11 @@ export default function AnalysesPage() {
                 <div className="flex items-center gap-2">
                   <div
                     className={`px-2 py-1 rounded text-xs font-medium ${
-                      analysis.status === "completed"
-                        ? "bg-green-100 text-green-800"
-                        : analysis.status === "failed"
-                          ? "bg-red-100 text-red-800"
-                          : "bg-yellow-100 text-yellow-800"
+                      analysis.status === 'completed'
+                        ? 'bg-green-100 text-green-800'
+                        : analysis.status === 'failed'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-yellow-100 text-yellow-800'
                     }`}
                   >
                     {analysis.status}
@@ -124,8 +135,8 @@ export default function AnalysesPage() {
                     Source: {analysis.source.type}
                     {analysis.source.url && (
                       <span>
-                        {" "}
-                        -{" "}
+                        {' '}
+                        -{' '}
                         <a
                           href={analysis.source.url}
                           target="_blank"

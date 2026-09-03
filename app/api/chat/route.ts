@@ -5,11 +5,11 @@ import {
   streamText,
   type FileUIPart,
   type UIMessage,
-} from "ai";
-import { createOpenAI, openai as defaultOpenAI } from "@ai-sdk/openai";
-import { PrismaClient } from "@/app/generated/prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
+} from 'ai';
+import { createOpenAI, openai as defaultOpenAI } from '@ai-sdk/openai';
+import { PrismaClient } from '@/app/generated/prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg(
@@ -25,7 +25,7 @@ const prisma = new PrismaClient({
 const isUrl = (value: string) => {
   try {
     const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:";
+    return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;
   }
@@ -36,7 +36,7 @@ const isUrl = (value: string) => {
  * @param messages - The full message history from the request body.
  */
 const getLastUserMessage = (messages: UIMessage[]) =>
-  [...messages].reverse().find((message) => message.role === "user");
+  [...messages].reverse().find((message) => message.role === 'user');
 
 /**
  * Concatenates the text parts of a message into a single trimmed string.
@@ -46,7 +46,7 @@ const getMessageText = (message: UIMessage | undefined) =>
   (message?.parts ?? [])
     .filter(isTextUIPart)
     .map((part) => part.text)
-    .join(" ")
+    .join(' ')
     .trim();
 
 /**
@@ -61,11 +61,20 @@ const getMessageFile = (message: UIMessage | undefined) =>
  * @param file - The uploaded file part.
  */
 const sourceTypeForFile = (file: FileUIPart) => {
-  if (file.mediaType === "application/pdf") return "pdf";
-  if (file.mediaType.startsWith("image/")) return "image";
-  return "text";
+  if (file.mediaType === 'application/pdf') return 'pdf';
+  if (file.mediaType.startsWith('image/')) return 'image';
+  return 'text';
 };
 
+/**
+ * Analyzes a submitted URL, file, or block of text.
+ *
+ * Persists a `Source` (for URLs and uploads) and a `Request`, streams a
+ * completion from OpenAI, then saves the `Summary` and flips the request to
+ * `completed`/`failed`.
+ * @param req - Request whose JSON body holds the AI SDK `messages` array.
+ * @returns A UI message stream response, or a 500 error payload.
+ */
 export async function POST(req: Request) {
   const body = await req.json();
   const messages: UIMessage[] = Array.isArray(body.messages)
@@ -82,7 +91,7 @@ export async function POST(req: Request) {
       where: { url: userText },
       update: { createdAt: new Date() },
       create: {
-        type: "url",
+        type: 'url',
         url: userText,
       },
     });
@@ -129,13 +138,13 @@ export async function POST(req: Request) {
     ? createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
     : defaultOpenAI;
 
-  let summaryText = "";
+  let summaryText = '';
   let errorMessage: string | undefined;
 
   try {
     const result = streamText({
-      model: provider(process.env.OPENAI_MODEL ?? "gpt-4o-mini"),
-      system: systemInstructions.join("\n\n"),
+      model: provider(process.env.OPENAI_MODEL ?? 'gpt-4o-mini'),
+      system: systemInstructions.join('\n\n'),
       messages: modelMessages,
       maxRetries: 0,
     });
@@ -145,7 +154,7 @@ export async function POST(req: Request) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-      if (value.type === "text-delta" && value.text) {
+      if (value.type === 'text-delta' && value.text) {
         summaryText += value.text;
       }
     }
@@ -161,22 +170,22 @@ export async function POST(req: Request) {
     // Update request status
     await prisma.request.update({
       where: { id: request.id },
-      data: { status: "completed" },
+      data: { status: 'completed' },
     });
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
-    errorMessage = error instanceof Error ? error.message : "Unknown error";
+    errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Update request status to failed
     await prisma.request.update({
       where: { id: request.id },
-      data: { status: "failed" },
+      data: { status: 'failed' },
     });
 
     return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
-      headers: { "content-type": "application/json" },
+      headers: { 'content-type': 'application/json' },
     });
   }
 }
