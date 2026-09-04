@@ -7,15 +7,7 @@ import {
   type UIMessage,
 } from 'ai';
 import { createOpenAI, openai as defaultOpenAI } from '@ai-sdk/openai';
-import { PrismaClient } from '@/app/generated/prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { Pool } from 'pg';
-
-const prisma = new PrismaClient({
-  adapter: new PrismaPg(
-    new Pool({ connectionString: process.env.DATABASE_URL }),
-  ),
-});
+import { prisma } from '@/app/api/prismaClient';
 
 /**
  * Checks whether a string is an absolute http(s) URL.

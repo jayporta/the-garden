@@ -98,6 +98,13 @@ Decisions that are expensive to rediscover.
   there is no `useChat` here.
 - Meters are applied by a pure client-side function, so simulation logic is unit
   testable without mocking a server.
+- **One shared Prisma client**, `app/api/prismaClient.ts`, replacing the inline
+  `pg.Pool` each route used to build. `pg` opens up to 10 sockets per pool, so
+  the ceiling grew with the route count: the two RAG routes plus Debate Club's
+  turn and cooldown routes would have reached 40 against a free-tier Postgres
+  that caps direct connections near 60. This is a stated colocation exception —
+  a pool is process-wide, and a factory handing out per-caller clients would
+  defeat its own purpose.
 
 **Art**
 
@@ -141,10 +148,6 @@ Decisions that are expensive to rediscover.
   `/api/debate/turn` parses ids off a request body, where they arrive as untyped
   `string` at a trust boundary and a cast is unchecked. That route needs its own
   runtime membership check turning a bad id into a 400, not the bare throw.
-- Each route handler builds its own inline `pg.Pool` + Prisma adapter. That is
-  the documented pattern today, but once `app/api/debate/*` lands there will be
-  two features duplicating it, and a pool per route file will start to look like
-  something that wants a shared connection factory. Revisit at task 7.
 
 ---
 
@@ -251,3 +254,18 @@ that tasks 10–14 draw from.
 Reviewer found no blockers. Its one nit was a test asserting less than its name
 promised (`modelId`/`label` distinctness was named but never checked); the
 assertion was added and confirmed to fail when deliberately broken.
+
+**Interlude — one shared Prisma client.** Unplanned but scheduled: the open
+question "revisit at task 7" came due before the cooldown work, since that task
+adds two more routes. `app/api/prismaClient.ts` now owns the single
+`PrismaClient` and its `pg.Pool`; both RAG routes import it instead of
+constructing their own. Test count unchanged at 31 — the existing route tests
+already mock `@/app/generated/prisma/client`, `@prisma/adapter-pg` and `pg`, the
+three modules the new file imports, so they needed no edit.
+
+The dev-only HMR cache is gated on `NODE_ENV === 'development'`, deliberately
+not on `!== 'production'` as the common Prisma recipe writes it. Under vitest
+`NODE_ENV` is `test`, and caching a client on `globalThis` there would hand the
+second route test file in a worker the _first_ file's mocked client — and the
+two files mock different Prisma methods. Only Next's dev server reloads modules,
+so only it gets the handle.
