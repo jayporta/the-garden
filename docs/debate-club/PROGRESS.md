@@ -6,7 +6,7 @@
 >
 > Update it as part of each task, before committing — not retroactively.
 
-**Branch:** `feat/debate-club` (branched from `main` at `c7e61aa`)
+**Branch:** `feat/debate-club` (branched from `main` at `95d41dd`)
 **Feature route:** `/debate` (not yet created)
 
 ---
@@ -21,8 +21,8 @@ files cannot drift.
 | --- | ------------------- | --------------------- |
 | 0   | Merge lint branch   | ✅ done               |
 | 1   | Feature docs        | ✅ done               |
-| 2   | Pinned deps         | ⬜ next               |
-| 3   | Topics/models/spin  | ⬜                    |
+| 2   | Pinned deps         | ✅ done               |
+| 3   | Topics/models/spin  | ⬜ next               |
 | 4   | Personas            | ⬜                    |
 | 5   | Meters              | ⬜                    |
 | 6   | Sequence machine    | ⬜                    |
@@ -148,3 +148,25 @@ originally still said task 1 was in progress, and the full 15-task list was
 restated in both DESIGN.md and PROGRESS.md and had already drifted in two
 places. The task list now lives only in DESIGN.md; this file tracks status
 alone.
+
+**Interlude — colocated the RAG feature.** Unplanned, inserted between tasks 1
+and 2 at the user's request. `SubmitButton` and the analyses page moved under
+`app/rag/`, and the two route handlers gained a feature segment
+(`app/api/rag/...`). URLs changed: `/analyses` → `/rag/analyses`, `/api/chat` →
+`/api/rag/chat`, `/api/analyses` → `/api/rag/analyses`. Test count unchanged at 9. Debate Club follows the same shape: `app/debate/` and `app/api/debate/`.
+
+**Interlude — rewrote commit messages to Conventional Commits.** All ten commits
+were rewritten via `git filter-branch --msg-filter`; trees verified identical
+pairwise, author dates preserved. **Every SHA before this point changed** — any
+older note referencing a pre-rewrite hash is stale. `main` was force-pushed.
+Backup tags `backup/pre-msg-rewrite-*` still point at the original commits.
+
+**Task 2 — pinned dependencies.** Installed the AI providers
+(`@ai-sdk/groq`, `@ai-sdk/google`, `@openrouter/ai-sdk-provider`) and the WebGL
+stack (`three`, `@react-three/fiber`, `@react-three/drei`,
+`@react-three/postprocessing`, `motion`). Verified every AI package resolves
+`@ai-sdk/provider@3.x`, matching `ai@6`. Caret ranges are deliberate rather than
+exact pins: the incompatibility sits at the major boundary, so `^3` cannot reach
+the breaking `4.x`. AGENTS.md gains _Dependency constraints_ and _Gotchas_
+sections recording these, the r3f React ceiling, the stale-`.next` typecheck
+failure, and the repo-wide-sweep rule for route moves.
