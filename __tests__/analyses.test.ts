@@ -27,13 +27,13 @@ vi.mock('pg', () => ({
   Pool: vi.fn(),
 }));
 
-describe('/api/analyses', () => {
-  let GET: typeof import('@/app/api/analyses/route').GET;
-  let DELETE: typeof import('@/app/api/analyses/route').DELETE;
+describe('/api/rag/analyses', () => {
+  let GET: typeof import('@/app/api/rag/analyses/route').GET;
+  let DELETE: typeof import('@/app/api/rag/analyses/route').DELETE;
 
   beforeEach(async () => {
     vi.clearAllMocks();
-    ({ GET, DELETE } = await import('@/app/api/analyses/route'));
+    ({ GET, DELETE } = await import('@/app/api/rag/analyses/route'));
   });
 
   describe('GET', () => {
@@ -86,7 +86,7 @@ describe('/api/analyses', () => {
 
   describe('DELETE', () => {
     it('should delete analysis successfully', async () => {
-      const request = new Request('http://localhost/api/analyses', {
+      const request = new Request('http://localhost/api/rag/analyses', {
         method: 'DELETE',
         body: JSON.stringify({ id: 'test-id' }),
         headers: { 'Content-Type': 'application/json' },
@@ -109,7 +109,7 @@ describe('/api/analyses', () => {
     });
 
     it('should return error for missing id', async () => {
-      const request = new Request('http://localhost/api/analyses', {
+      const request = new Request('http://localhost/api/rag/analyses', {
         method: 'DELETE',
         body: JSON.stringify({}),
         headers: { 'Content-Type': 'application/json' },
@@ -123,7 +123,7 @@ describe('/api/analyses', () => {
     });
 
     it('should handle delete errors', async () => {
-      const request = new Request('http://localhost/api/analyses', {
+      const request = new Request('http://localhost/api/rag/analyses', {
         method: 'DELETE',
         body: JSON.stringify({ id: 'test-id' }),
         headers: { 'Content-Type': 'application/json' },

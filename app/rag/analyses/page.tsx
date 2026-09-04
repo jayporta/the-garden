@@ -30,7 +30,7 @@ export default function AnalysesPage() {
   // rejects reading a `const` binding above its declaration.
   const fetchAnalyses = useCallback(async () => {
     try {
-      const res = await fetch('/api/analyses');
+      const res = await fetch('/api/rag/analyses');
       if (!res.ok) throw new Error('Failed to fetch analyses');
       const data = await res.json();
       setAnalyses(data);
@@ -55,7 +55,7 @@ export default function AnalysesPage() {
     if (!confirm('Are you sure you want to delete this analysis?')) return;
 
     try {
-      const res = await fetch('/api/analyses', {
+      const res = await fetch('/api/rag/analyses', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id }),
