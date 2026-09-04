@@ -19,7 +19,14 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Architecture
 
-This is an experimental playground app ("The Garden") with one real feature so far, RAG-light, under `/rag`.
+This is an experimental playground app ("The Garden"). Each feature is an independent experiment; they do not share code beyond `app/components/`.
+
+| Feature     | Route     | Docs                                                                    |
+| ----------- | --------- | ----------------------------------------------------------------------- |
+| RAG-light   | `/rag`    | described below                                                         |
+| Debate Club | `/debate` | [`docs/debate-club/`](docs/debate-club/) — **read `PROGRESS.md` first** |
+
+**Before working on Debate Club**, read `docs/debate-club/PROGRESS.md` (current state, next task, decision log) and `docs/debate-club/DESIGN.md` (why it works the way it does). They are maintained so a new session needs no verbal handoff — and `PROGRESS.md` is updated as part of each task, before committing.
 
 **Data flow (RAG-light):** `RagForm` (`app/rag/components/RagForm.tsx`, client component) uses `@ai-sdk/react`'s `useChat`/`Chat` with `DefaultChatTransport` pointed at `/api/chat`. Submitting text or a URL posts to `app/api/chat/route.ts`, which:
 
