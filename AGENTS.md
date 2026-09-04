@@ -47,6 +47,28 @@ This is an experimental playground app ("The Garden"). Each feature is an indepe
 
 **Styling:** Tailwind v4 via the `@tailwindcss/postcss` plugin (no `tailwind.config.*`); `app/rag/components/SubmitButton.tsx` shows the `light-dark()` CSS function pattern used for theme-aware colors.
 
+## Dependency constraints
+
+Three traps that produce confusing failures if you upgrade past them. Each was verified against the installed tree, not assumed.
+
+**AI SDK providers must share a provider-spec major with `ai`.** `ai@6` resolves `@ai-sdk/provider@3.x`; every provider package must too. The current releases of `@ai-sdk/groq`, `@ai-sdk/google` (both `4.x`) and `@openrouter/ai-sdk-provider` (`3.x`) target `@ai-sdk/provider@4.x` / peer `ai ^7`, so **installing any of them unpinned breaks the build**. The caret ranges in `package.json` are deliberate and sufficient — the break is at the major boundary, so `^3` can never resolve to `4.x`. Check alignment with:
+
+```
+node -p "require('ai/package.json').dependencies['@ai-sdk/provider']"
+```
+
+Moving to `ai@7` means moving every provider together, in one commit.
+
+**`@react-three/fiber@9` peers `react >=19 <19.3`.** Bumping React to 19.3 breaks the build. Upgrade fiber first, or not at all.
+
+**OpenRouter has a zero-dependency fallback.** It is OpenAI-API-compatible, so `createOpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey })` from the already-installed `@ai-sdk/openai` works without its own provider package.
+
+## Gotchas
+
+**A stale `.next` can fail `tsc` after any route move.** `tsconfig.json` includes `.next/dev/types/**/*.ts`, and Next's generated route validator still references the old paths, so `npx tsc --noEmit` reports `TS2307` on files you never wrote while `npm run build` passes. Fix: `rm -rf .next`, then rebuild. This is stale codegen, not a real type error.
+
+**Renaming routes needs a repo-wide sweep, not a diff-scoped one.** Neither typechecking nor tests catch a stale route string, because the survivors are JSDoc comments and URL literals inside test fixtures. After any move, grep the whole repo — tracked and untracked — for the old paths and URLs.
+
 ## Code Style
 
 The mechanical rules below are enforced, not just documented: **Prettier**
