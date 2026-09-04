@@ -174,7 +174,7 @@ not justify WebGL.
 | Palette       | Bright and fun; **deferred**                      |
 | Controls      | The robot's chest panel                           |
 | DOM animation | `motion` — no hand-written CSS keyframes          |
-| Providers     | Groq, Google, OpenRouter                          |
+| Gateways      | Groq, Google, OpenRouter                          |
 | Sim depth     | Traits + decaying needs + relationship score      |
 
 ---
@@ -289,15 +289,16 @@ app/debate/
     DebateHud.tsx             transcript, relationship, Stop
   sequence.ts                 pure state machine
   sprites.ts                  sheet manifest, frame timing, anchors, panel rect
-  models.ts                   FREE_MODELS registry {id,label,provider,modelId}
+  models.ts                   FREE_MODELS {id,label,author,gateway,modelId}
   spin.ts                     spin(rng) -> { leftModelId, topicId, rightModelId }
   personas.ts                 Persona, PERSONALITY_AXES, compilePersonaPrompt,
                               derivePersonalityType, deriveSimParams
   meters.ts                   Meters, applyTurnEffects, hasConceded, relationship
   topics.ts                   DEBATE_TOPICS, typed const
+  art_references/             reference art the sprite sheets are drawn from
   __tests__/                  sequence · spin · personas · meters
 
-app/api/debate/turn/route.ts  POST one turn; resolves provider from registry
+app/api/debate/turn/route.ts  POST one turn; resolves gateway from registry
 __tests__/debateTurn.test.ts  route test (matches existing convention)
 
 docs/debate-club/
@@ -341,12 +342,51 @@ Tasks 1–8 need no artwork and no WebGL; the app is fully playable by task 8.
 
 ## Models registry
 
-Seed `FREE_MODELS` with Groq and Google entries plus curated OpenRouter `:free`
-models. **Input needed from you at task 3** — see _Blocked on the
-user_ in [`PROGRESS.md`](./PROGRESS.md), which owns the live list of what is
-outstanding. Each entry carries its provider so the route resolves the
-right client. Re-roll the right reel on collision so the two sides are never the
-same model.
+`FREE_MODELS` holds Groq, Google and curated OpenRouter `:free` entries. Each
+entry carries its **gateway** — the service the request is sent to — so the route
+resolves the right client — and its **author**, the lab that trained it.
+
+No count is quoted here on purpose. The registry is its own count, and
+`PROGRESS.md` records what was verified and when; restating the number in this
+document is how the task list drifted at task 1.
+
+Gateway is deliberately not called _provider_: Groq and OpenRouter train no
+models of their own. Groq hosts other labs' open weights, and OpenRouter is an
+aggregator that forwards to whichever provider serves a model. Only Google both
+trains and serves. The field names the transport, not the author.
+
+The two sides are never the same model. **This is done by exclusion, not by
+re-rolling**, which is a deliberate change from the original plan: the right
+reel draws from the models _minus_ the left one and shifts past it. The
+distribution over the non-left models is identical, but it always terminates in
+a single draw, where re-rolling on collision has no upper bound. Mirror matches
+are therefore structurally impossible rather than retried away — re-enabling
+them means changing the draw, not flipping a constant.
+
+**Every roster here is perishable, and none of them may be assumed.** The AI SDK
+model-id unions are not a liveness signal: `GroqChatModelId` and
+`GoogleGenerativeAIModelId` both end in `| (string & {})`, so they accept any
+string, and they still list models the vendors retired long ago. Checking the
+vendors' own docs at task 3 killed six of eight Groq ids and one of three Google
+ids. Re-check against vendor deprecation pages and
+`https://openrouter.ai/api/v1/models` rather than trusting this list to age.
+
+### Free-tier budget is a design constraint
+
+All three gateways are usable without a paid plan, but the ceilings differ by
+two orders of magnitude and they shape the turn cap:
+
+| Gateway    | Free ceiling                                                                 |
+| ---------- | ---------------------------------------------------------------------------- |
+| OpenRouter | **50 requests/day** without credits (1,000 with $10 of credit, ever), 20/min |
+| Groq       | 10–30 RPM, 100–14.4K requests/day, varies by model                           |
+| Google     | Free tier needs no billing account                                           |
+
+One debate at the default 10-turn cap costs ~10 requests. On OpenRouter's
+no-credit tier that is **five debates a day** before the reels start returning
+429s. Two consequences: the 429-as-paused-debate handling in _Risks_ is a
+certainty rather than a precaution, and the spin should not be free to land two
+OpenRouter models when a cheaper gateway is available. Revisit at task 7.
 
 ## Env vars
 

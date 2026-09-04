@@ -6,8 +6,8 @@
 >
 > Update it as part of each task, before committing — not retroactively.
 
-**Branch:** `feat/debate-club` (branched from `main` at `95d41dd`)
-**Feature route:** `/debate` (not yet created)
+**Branch:** none — solo project, so work lands directly on `main`.
+**Feature route:** `/debate` (module directory exists; the page itself lands at task 8)
 
 ---
 
@@ -22,8 +22,8 @@ files cannot drift.
 | 0   | Merge lint branch   | ✅ done               |
 | 1   | Feature docs        | ✅ done               |
 | 2   | Pinned deps         | ✅ done               |
-| 3   | Topics/models/spin  | ⬜ next               |
-| 4   | Personas            | ⬜                    |
+| 3   | Topics/models/spin  | ✅ done               |
+| 4   | Personas            | ⬜ next               |
 | 5   | Meters              | ⬜                    |
 | 6   | Sequence machine    | ⬜                    |
 | 7   | Turn API route      | ⬜                    |
@@ -79,6 +79,15 @@ Decisions that are expensive to rediscover.
   `@ai-sdk/openai` can reach it via `createOpenAI({ baseURL, apiKey })` with no
   extra dependency.
 
+**Models**
+
+- The OpenRouter roster was **not** taken from the user's other project. That
+  project generates games, so its curated list excludes text-only models — the
+  wrong filter for a debate. The list here came from a live read of
+  `https://openrouter.ai/api/v1/models` instead.
+- OpenRouter's `:free` roster turns over often. Re-read the endpoint when models
+  start failing rather than assuming `FREE_MODELS` is still current.
+
 **Architecture**
 
 - `spin(rng)` decides all three reel results _before_ any animation runs. The
@@ -114,8 +123,6 @@ Decisions that are expensive to rediscover.
 
 ## Blocked on the user
 
-- **Task 3** — the curated list of OpenRouter `:free` models known to actually
-  work, from the other project. Many advertised free models are unreliable.
 - **Task 14** — robot artwork. See the asset spec in `DESIGN.md`: identical
   canvas size and registration point per frame, eyes and chest panel on separate
   layers, cord attachment point marked, JSON manifest per robot.
@@ -124,8 +131,16 @@ Decisions that are expensive to rediscover.
 ## Open questions
 
 - Turn cap default is 10; may need tuning once real transcripts exist.
-- Whether a mirror match (same model both sides) should ever be allowed. Current
-  plan re-rolls on collision, behind a constant so it can be re-enabled.
+- Every OpenRouter free model advertises a `reasoning` parameter, and several
+  are reasoning-first models. If their thinking traces come back in the response
+  body they will land in the speech bubbles as debate text. Task 7 should
+  suppress reasoning output or strip it, and this wants checking against a real
+  response rather than assuming the provider hides it.
+- `getTopic`/`getModel` throw on an unknown id, which is safe while every caller
+  is internal and the id types are closed unions. Task 7 breaks that assumption:
+  `/api/debate/turn` parses ids off a request body, where they arrive as untyped
+  `string` at a trust boundary and a cast is unchecked. That route needs its own
+  runtime membership check turning a bad id into a 400, not the bare throw.
 - Each route handler builds its own inline `pg.Pool` + Prisma adapter. That is
   the documented pattern today, but once `app/api/debate/*` lands there will be
   two features duplicating it, and a pool per route file will start to look like
@@ -170,3 +185,69 @@ exact pins: the incompatibility sits at the major boundary, so `^3` cannot reach
 the breaking `4.x`. AGENTS.md gains _Dependency constraints_ and _Gotchas_
 sections recording these, the r3f React ceiling, the stale-`.next` typecheck
 failure, and the repo-wide-sweep rule for route moves.
+
+**Task 3 — topics, models and the spin.** Added `app/debate/topics.ts` (12
+hard-coded low-stakes propositions), `app/debate/models.ts` (`FREE_MODELS`, 15
+entries) and `app/debate/spin.ts`, with tests beside them in
+`app/debate/__tests__/`. Test count 9 → 31.
+
+Both registries use `as const satisfies readonly T[]`, which validates each
+entry's shape while keeping the literal `id` types, so `DebateTopicId` and
+`FreeModelId` are unions rather than `string`.
+
+`DEBATE_TOPICS` is a **placeholder the user intends to edit by hand** — add and
+remove freely; nothing derives from the specific topics.
+
+**Deviation from DESIGN.md, deliberate:** the design says re-roll the right reel
+on collision. `spin` instead draws the right model from the pool _minus_ the
+left one and shifts past it. Same uniform distribution over the non-left models,
+but it always terminates in one draw — re-rolling has no upper bound and would
+exhaust a scripted test rng. Mirror matches are therefore structurally
+impossible rather than retried away; re-enabling them means changing the draw,
+not flipping a constant, so the `ALLOW_MIRROR_MATCH` constant the design
+anticipated was not added.
+
+**`provider` was renamed to `gateway`, and `author` added.** The user pushed
+back on calling Groq, Google and OpenRouter all "providers", and was right — the
+field conflated two things. Groq trains nothing; it hosts other labs' open
+weights. OpenRouter trains nothing either; it aggregates. Only Google both
+trains and serves. `gateway` names the transport (which SDK client the route
+builds), `author` names the lab. Gemma 4 makes the split concrete: authored by
+Google, reached through OpenRouter.
+
+**Every model id was then verified live, and most of them failed.** The user
+asked for this before trusting the list, and it was the right call — the
+original 22 dropped to 15:
+
+- The AI SDK unions are worthless as a liveness signal. Both `GroqChatModelId`
+  and `GoogleGenerativeAIModelId` end in `| (string & {})`, so they accept any
+  string; they are autocomplete, not validation, and they still carry ids the
+  vendors retired long ago.
+- Groq: **6 of 8 dropped.** `gemma2-9b-it` shut down 2025-10-08,
+  `llama-4-maverick` 2026-03-09, `kimi-k2-instruct-0905` 2026-04-15,
+  `llama-4-scout` 2026-07-17, and `llama-3.3-70b-versatile` /
+  `llama-3.1-8b-instant` 2026-08-16 — the last two only 19 days before this task.
+  Only `openai/gpt-oss-120b` and `openai/gpt-oss-20b` survive on the free tier.
+- Google: **1 of 3 dropped.** `gemini-2.0-flash` is shut down. `gemini-2.5-flash`
+  and `gemini-2.5-flash-lite` remain free.
+- OpenRouter: **11 of 18 kept**, each confirmed via `/models/{id}/endpoints` to
+  have a serving endpoint at status 0 and 97%+ uptime. Dropped seven as unfit to
+  debate — two Poolside coding agents, Cohere North Mini Code, a finance-tuned
+  Ling, an NVIDIA content-safety guardrail, a Dots preview expiring 2026-09-30,
+  and an NVIDIA perception sub-agent that was also deranked (status −2).
+
+The OpenRouter list came from a live catalogue read, **not** from the user's
+other project — that project generates games, so its curation drops text-only
+models, the wrong filter here.
+
+All three gateways are free without a subscription; Google's free tier needs no
+billing account at all. The ceilings differ enormously though, and OpenRouter's
+50 requests/day without credits works out to about five 10-turn debates a day.
+See _Free-tier budget is a design constraint_ in DESIGN.md.
+
+The user also added `app/debate/art_references/bot.jpeg`, the robot reference
+that tasks 10–14 draw from.
+
+Reviewer found no blockers. Its one nit was a test asserting less than its name
+promised (`modelId`/`label` distinctness was named but never checked); the
+assertion was added and confirmed to fail when deliberately broken.
