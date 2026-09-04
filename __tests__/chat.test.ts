@@ -64,7 +64,7 @@ const mockStreamTextResult = (text: string) => ({
     .mockReturnValue(new Response('streamed response')),
 });
 
-describe('/api/chat', () => {
+describe('/api/rag/chat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockRequestCreate.mockResolvedValue({ id: 'request-id' });
@@ -81,9 +81,9 @@ describe('/api/chat', () => {
 
     mockSourceUpsert.mockResolvedValue({ id: 'source-id' });
 
-    const { POST } = await import('@/app/api/chat/route');
+    const { POST } = await import('@/app/api/rag/chat/route');
 
-    const request = new Request('http://localhost/api/chat', {
+    const request = new Request('http://localhost/api/rag/chat', {
       method: 'POST',
       body: JSON.stringify({
         messages: [
@@ -124,9 +124,9 @@ describe('/api/chat', () => {
     );
     (convertToModelMessages as unknown as Mock).mockResolvedValue([]);
 
-    const { POST } = await import('@/app/api/chat/route');
+    const { POST } = await import('@/app/api/rag/chat/route');
 
-    const request = new Request('http://localhost/api/chat', {
+    const request = new Request('http://localhost/api/rag/chat', {
       method: 'POST',
       body: JSON.stringify({
         messages: [
@@ -159,9 +159,9 @@ describe('/api/chat', () => {
 
     mockSourceCreate.mockResolvedValue({ id: 'source-id' });
 
-    const { POST } = await import('@/app/api/chat/route');
+    const { POST } = await import('@/app/api/rag/chat/route');
 
-    const request = new Request('http://localhost/api/chat', {
+    const request = new Request('http://localhost/api/rag/chat', {
       method: 'POST',
       body: JSON.stringify({
         messages: [
@@ -204,9 +204,9 @@ describe('/api/chat', () => {
     });
     (convertToModelMessages as unknown as Mock).mockResolvedValue([]);
 
-    const { POST } = await import('@/app/api/chat/route');
+    const { POST } = await import('@/app/api/rag/chat/route');
 
-    const request = new Request('http://localhost/api/chat', {
+    const request = new Request('http://localhost/api/rag/chat', {
       method: 'POST',
       body: JSON.stringify({
         messages: [

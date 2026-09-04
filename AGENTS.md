@@ -28,14 +28,14 @@ This is an experimental playground app ("The Garden"). Each feature is an indepe
 
 **Before working on Debate Club**, read `docs/debate-club/PROGRESS.md` (current state, next task, decision log) and `docs/debate-club/DESIGN.md` (why it works the way it does). They are maintained so a new session needs no verbal handoff — and `PROGRESS.md` is updated as part of each task, before committing.
 
-**Data flow (RAG-light):** `RagForm` (`app/rag/components/RagForm.tsx`, client component) uses `@ai-sdk/react`'s `useChat`/`Chat` with `DefaultChatTransport` pointed at `/api/chat`. Submitting text or a URL posts to `app/api/chat/route.ts`, which:
+**Data flow (RAG-light):** `RagForm` (`app/rag/components/RagForm.tsx`, client component) uses `@ai-sdk/react`'s `useChat`/`Chat` with `DefaultChatTransport` pointed at `/api/rag/chat`. Submitting text or a URL posts to `app/api/rag/chat/route.ts`, which:
 
 1. Pulls the latest user text out of the AI SDK message `parts`.
 2. If the text is a URL, upserts a `Source` row and fetches page content.
 3. Creates a `Request` row (status `pending`), builds a system prompt instructing the model to act as a document analyzer (not a chatbot), and streams a completion via `streamText` from the `ai` SDK using an OpenAI provider.
 4. On completion, persists a `Summary` row and flips the `Request` status to `completed`/`failed`, then returns `result.toUIMessageStreamResponse()`.
 
-`app/analyses/page.tsx` fetches `/api/analyses` (`app/api/analyses/route.ts`) to list past `Request`s with their `Source`/`Summary`, and can `DELETE` one (deletes `Summary` rows first, then the `Request`, due to the FK).
+`app/rag/analyses/page.tsx` fetches `/api/rag/analyses` (`app/api/rag/analyses/route.ts`) to list past `Request`s with their `Source`/`Summary`, and can `DELETE` one (deletes `Summary` rows first, then the `Request`, due to the FK).
 
 **Data model** (`prisma/schema.prisma`): `Source` (type `url`/`pdf`/`image`/`text`) 1—\* `Request` (`inputText`, `status`: `pending`/`completed`/`failed`) 1—1 `Summary` (`text`, `insights`).
 
@@ -45,7 +45,7 @@ This is an experimental playground app ("The Garden"). Each feature is an indepe
 
 **Testing:** vitest with `environment: "node"`. Route tests (`__tests__/*.test.ts`) mock `@/app/generated/prisma/client`, `@prisma/adapter-pg`, `pg`, and the `ai`/`@ai-sdk/openai` modules, then dynamically `import()` the route handler so the mocks take effect first — follow this pattern for new route tests rather than importing the handler at the top of the file.
 
-**Styling:** Tailwind v4 via the `@tailwindcss/postcss` plugin (no `tailwind.config.*`); `app/components/SubmitButton.tsx` shows the `light-dark()` CSS function pattern used for theme-aware colors.
+**Styling:** Tailwind v4 via the `@tailwindcss/postcss` plugin (no `tailwind.config.*`); `app/rag/components/SubmitButton.tsx` shows the `light-dark()` CSS function pattern used for theme-aware colors.
 
 ## Code Style
 

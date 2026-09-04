@@ -2,11 +2,11 @@
 import { useMemo, useState } from 'react';
 import { Chat, useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, isTextUIPart, type UIMessage } from 'ai';
-import { SubmitButton } from '@/app/components/SubmitButton';
+import { SubmitButton } from '@/app/rag/components/SubmitButton';
 
 /**
  * Submission form for RAG-light: accepts pasted text, a URL, or a dropped
- * PDF/image, posts it to `/api/chat`, and renders the streamed reply.
+ * PDF/image, posts it to `/api/rag/chat`, and renders the streamed reply.
  */
 export default function RagForm() {
   const [input, setInput] = useState('');
@@ -16,7 +16,7 @@ export default function RagForm() {
   const chat = useMemo(
     () =>
       new Chat({
-        transport: new DefaultChatTransport({ api: '/api/chat' }),
+        transport: new DefaultChatTransport({ api: '/api/rag/chat' }),
         messages: [],
       }),
     [],
