@@ -198,6 +198,7 @@ describe('/api/rag/chat', () => {
   });
 
   it('should mark the Request failed and return 500 on model errors', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { streamText, convertToModelMessages } = await import('ai');
     (streamText as unknown as Mock).mockImplementation(() => {
       throw new Error('Network error');
@@ -229,5 +230,7 @@ describe('/api/rag/chat', () => {
       where: { id: 'request-id' },
       data: { status: 'failed' },
     });
+    expect(logged.mock.calls[0].join(' ')).toContain('Network error');
+    logged.mockRestore();
   });
 });
