@@ -30,9 +30,8 @@ export type FreeModel = {
   /**
    * The lab that trained the model, which is often not the gateway.
    *
-   * Nothing reads this yet — it is recorded ahead of its consumer, the task 8
-   * HUD and transcript, at the user's request. Kept because it is what stops
-   * {@link gateway} being read as "who made it".
+   * Held separately from {@link gateway} so neither is read as the other:
+   * Gemma 4 is authored by Google and served through OpenRouter.
    */
   readonly author: string;
   readonly gateway: ModelGateway;
@@ -171,6 +170,16 @@ export const FREE_MODELS = [
 
 /** The id of any model in {@link FREE_MODELS}. */
 export type FreeModelId = (typeof FREE_MODELS)[number]['id'];
+
+/**
+ * One entry of {@link FREE_MODELS}, with its literal `id` type preserved.
+ *
+ * The type a *subset* of the registry is carried in — a pool the cooldowns have
+ * filtered, say. Typing such a pool as `readonly FreeModel[]` instead would
+ * widen `id` back to `string`, silently breaking the closed {@link FreeModelId}
+ * union that {@link getModel} and `spin`'s result depend on.
+ */
+export type FreeModelEntry = (typeof FREE_MODELS)[number];
 
 /**
  * Looks up a model by id.

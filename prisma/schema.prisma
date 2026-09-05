@@ -35,3 +35,18 @@ model Summary {
   createdAt DateTime @default(now())
   request   Request  @relation(fields: [requestId], references: [id])
 }
+
+// A vendor-stated rate limit, recorded so a spent model is skipped rather than
+// re-tried into a 429. One table at two granularities: a `gateway` row is a
+// floor under every model that gateway serves. Bounded at 18 rows forever
+// (15 models + 3 gateways), so it is upserted per target rather than appended.
+model DebateCooldown {
+  id        String   @id @default(uuid())
+  scope     String   // "model", "gateway"
+  target    String   // FreeModelId when scope="model"; ModelGateway when scope="gateway"
+  until     DateTime // status is derived from (until, now) — never stored
+  reason    String   // "retry-after", "quota-header", "gateway-default"
+  createdAt DateTime @default(now())
+
+  @@unique([scope, target])
+}
