@@ -375,3 +375,55 @@ wait for task 9, since they have no consumer until there is a UI. Neither the
 provider nor the timer will be unit tested — `environment: 'node'` with no jsdom,
 and adding one is a real dependency change — so the standing rule is that any
 logic that appears in the provider moves into `cooldowns.ts` instead.
+
+---
+
+## 2026-09-04 — conventions pass, and TanStack for data fetching
+
+Not a numbered task. A follow-up after the global `CLAUDE.md` was rewritten to
+point at the `react-typescript` skill, which contradicts what task 7 was written
+against on three points. Landed as five commits rather than one, because the
+pieces are independent of each other. Test count 31 → 113 across the pass.
+
+**Errors are no longer suppressed** (`fix(api)`). Four route handlers caught,
+returned a 500 and recorded nothing, which made the cause unrecoverable — the
+client is told only "Failed to fetch cooldowns" on purpose. `app/api/logError.ts`
+is now the one place a handled server-side failure is written down, and it
+redacts before it writes: `pg` and Prisma put the connection string into their
+error messages and `DATABASE_URL` carries a password. The `catch` inside `isUrl`
+was left bare and commented — `URL` throwing there _is_ the answer to the
+question the predicate asks.
+
+**Three speculative exports were cut**, folded into the task 7 commit rather
+than committed and removed a commit later, since they had never been committed
+at all. Recorded in the task 7 entry above.
+
+**Comments were de-historicised** per the skill's "no development history,
+timeless" rule. `FreeModel.author` no longer narrates that it was added ahead of
+its consumer at your request, and `prismaClient.ts` no longer cites a colocation
+rule that the `CLAUDE.md` rewrite deleted, or describes the connection ceiling
+in the past tense.
+
+**TanStack Query replaces `fetch` + `useEffect`** (`chore(deps)`, then
+`feat(rag)`). `app/rag/analyses/page.tsx` was the only place in the app fetching
+that way. `refetchOnWindowFocus` is **off** in the app defaults and `retry` is 1,
+both against TanStack's own defaults, because every query here ends at a metered
+upstream. The task 9 cooldowns hook is the first that should opt back in.
+
+**jsdom and Testing Library were added**, which the task 7 note called a real
+dependency change and deferred. It was: the conversion cannot be tested at all
+without a React environment. Scoped per file by `// @vitest-environment jsdom`
+so the default stays `node` and no config changed. React stayed pinned at
+19.2.4, so the `@react-three/fiber@9` ceiling still holds. This unblocks the
+task 9 HUD tests too.
+
+### Open question, carried forward
+
+`AGENTS.md` tells route tests to mock `@prisma/adapter-pg` and `pg`. Those mocks
+are **not load-bearing** — deleting them leaves the suite green — because
+`@/app/generated/prisma/client` is already mocked, so `PrismaClient` is a
+`vi.fn` that ignores its `adapter`, `PrismaPg`'s constructor only stores the
+pool, and `pg.Pool` opens no socket until a query. The skill's "never assert
+something that cannot fail" says delete them; the counter-argument is that
+deleting means a real `pg.Pool` holding the real `DATABASE_URL` gets constructed
+during tests. Undecided, so left in place and unchanged.
