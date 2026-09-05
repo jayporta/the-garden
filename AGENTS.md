@@ -35,7 +35,7 @@ This is an experimental playground app ("The Garden"). Each feature is an indepe
 3. Creates a `Request` row (status `pending`), builds a system prompt instructing the model to act as a document analyzer (not a chatbot), and streams a completion via `streamText` from the `ai` SDK using an OpenAI provider.
 4. On completion, persists a `Summary` row and flips the `Request` status to `completed`/`failed`, then returns `result.toUIMessageStreamResponse()`.
 
-`app/rag/analyses/page.tsx` fetches `/api/rag/analyses` (`app/api/rag/analyses/route.ts`) to list past `Request`s with their `Source`/`Summary`, and can `DELETE` one (deletes `Summary` rows first, then the `Request`, due to the FK).
+`app/rag/analyses/page.tsx` lists past `Request`s with their `Source`/`Summary` and can `DELETE` one (the route deletes `Summary` rows first, then the `Request`, due to the FK). It reads through TanStack Query: `app/rag/analysesApi.ts` holds the wire types and the two calls, `useAnalyses`/`useDeleteAnalysis` wrap them, and `AnalysisCard` renders a row. A successful delete **invalidates** the query key rather than splicing local state, so the list is always what the server says still exists.
 
 **Data model** (`prisma/schema.prisma`): `Source` (type `url`/`pdf`/`image`/`text`) 1—\* `Request` (`inputText`, `status`: `pending`/`completed`/`failed`) 1—1 `Summary` (`text`, `insights`).
 
@@ -43,11 +43,15 @@ Debate Club adds one standalone table with no relations: `DebateCooldown` (`scop
 
 **Prisma specifics:** the generated client outputs to `app/generated/prisma` (not `node_modules`), is gitignored, and must be regenerated via `npx prisma generate` whenever the schema changes — tests import from `@/app/generated/prisma/client` and will fail to type-check if it's stale or missing. The app uses Prisma's driver-adapter pattern (`@prisma/adapter-pg` + a `pg.Pool`) rather than the default query engine. Every route handler imports the one shared client from `app/api/prismaClient.ts` — **do not construct a `PrismaClient` inline in a route.** `pg` opens up to 10 sockets per `Pool`, so a pool per route file made the connection ceiling grow with the route count, against a free-tier Postgres that caps direct connections near 60.
 
+**Data fetching (client):** TanStack Query, never `fetch` inside a `useEffect`. `app/components/QueryProvider.tsx` is mounted in the root layout and builds its client from `app/lib/queryClient.ts`. Two of that client's defaults deliberately differ from TanStack's own: **`refetchOnWindowFocus` is `false`** and `retry` is `1`, because every query here ends at a metered upstream and alt-tabbing must not spend quota. A query that genuinely tracks live state opts back in for itself with `refetchOnWindowFocus: true` — do not flip the global default. Network calls live in a plain `*Api.ts` module taking a `fetchImpl` seam, one hook per file beside it, so parsing stays testable without React.
+
 **Error handling (server):** route handlers cannot rethrow, so a `catch` there is the end of the line for an error. Every one calls `logError` from `app/api/logError.ts`, which redacts URL credentials and `sk-` keys before writing — Prisma and `pg` put `DATABASE_URL`, password and all, into their messages. A bare `catch {}` is only acceptable where the throw _is_ the answer (see `isUrl` in the chat route), and that needs a comment saying so.
 
 **Env vars:** `DATABASE_URL` (Postgres), `OPENAI_API_KEY` (optional — falls back to the default `openai` provider from `@ai-sdk/openai` if unset), `OPENAI_MODEL` (optional, defaults to `gpt-4o-mini`).
 
-**Testing:** vitest with `environment: "node"`. Route tests (`__tests__/*.test.ts`) mock `@/app/generated/prisma/client`, `@prisma/adapter-pg`, `pg`, and the `ai`/`@ai-sdk/openai` modules, then dynamically `import()` the route handler so the mocks take effect first — follow this pattern for new route tests rather than importing the handler at the top of the file.
+**Testing:** vitest with `environment: "node"` as the default. Route tests (`__tests__/*.test.ts`) mock `@/app/generated/prisma/client`, `@prisma/adapter-pg`, `pg`, and the `ai`/`@ai-sdk/openai` modules, then dynamically `import()` the route handler so the mocks take effect first — follow this pattern for new route tests rather than importing the handler at the top of the file.
+
+Component and hook tests opt into jsdom **per file**, with `// @vitest-environment jsdom` as the first line of a `.test.tsx`; there is no config-level split, so a `.test.ts` stays on `node`. Render with `@testing-library/react`, query by role or visible text, and wrap hooks in a `QueryClientProvider` built from `createQueryClient()` with `retry` turned off so a failing query settles in one tick. Stub the network with `vi.stubGlobal('fetch', …)` typed as `(url: string, init?: RequestInit)`, so assertions can read back what was actually requested.
 
 **Styling:** Tailwind v4 via the `@tailwindcss/postcss` plugin (no `tailwind.config.*`); `app/rag/components/SubmitButton.tsx` shows the `light-dark()` CSS function pattern used for theme-aware colors.
 

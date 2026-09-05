@@ -340,11 +340,11 @@ one cohesive subsystem, not a kind grab-bag.
 ```
 app/debate/
   page.tsx                    server entry, renders DebateClient
-  layout.tsx                  server component; wraps children in CooldownProvider
+  layout.tsx                  server component
   components/
     DebateClient.tsx          'use client'; dynamic-imports Stage ssr:false
-    cooldownContext.ts        'use client'; context + useCooldowns hook
-    CooldownProvider.tsx      'use client'; state, hydration, one expiry timer
+  useCooldowns.ts             'use client'; TanStack query over the cooldowns
+                              route
     scene/
       Stage.tsx               <Canvas>, lighting, EffectComposer (bloom only)
       Robot.tsx               sprite playback, eye-glow + panel layers
@@ -419,8 +419,17 @@ referring to "task 7" (the turn route) now means task 8, and "task 8" (grey-box
 | 15  | Sprite-sheet integration — **blocked on your artwork**                                                                           | `feat`      |
 | 16  | Palette pass — **deferred, your call**                                                                                           | `style`     |
 
-The cooldown provider waits for task 9 rather than landing with task 7: it has
-no consumer until there is a UI, and building it earlier is orphaned code.
+The client-side half of cooldowns waits for task 9 rather than landing with
+task 7: it has no consumer until there is a UI, and building it earlier is
+orphaned code. It will be a **TanStack Query hook**, `useCooldowns`, over
+`GET /api/debate/cooldowns` — not a hand-rolled context with its own fetch and
+expiry timer. TanStack owns the request, the cache and the refetch; what remains
+is the derivation, which already lives in `cooldowns.ts`.
+
+That hook must set `refetchOnWindowFocus: true` for itself, overriding the app
+default in `app/lib/queryClient.ts`. Cooldowns are the one thing here that goes
+stale on its own while the tab is in the background, and re-reading them is a
+cheap query against our own database rather than a metered upstream call.
 
 ---
 

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import Nav from '@/app/components/Nav';
+import QueryProvider from '@/app/components/QueryProvider';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -19,7 +20,8 @@ export const metadata: Metadata = {
 };
 
 /**
- * Root layout: loads the Geist fonts and frames every page with the nav.
+ * Root layout: loads the Geist fonts, puts a query client in scope, and frames
+ * every page with the nav.
  */
 export default function RootLayout({
   children,
@@ -32,10 +34,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <div className="flex flex-1 pt-5 gap-5">
-          <Nav />
-          <main className="flex-1 px-10">{children}</main>
-        </div>
+        <QueryProvider>
+          <div className="flex flex-1 pt-5 gap-5">
+            <Nav />
+            <main className="flex-1 px-10">{children}</main>
+          </div>
+        </QueryProvider>
       </body>
     </html>
   );
