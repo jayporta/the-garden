@@ -7,6 +7,7 @@ import {
   type UIMessage,
 } from 'ai';
 import { createOpenAI, openai as defaultOpenAI } from '@ai-sdk/openai';
+import { logError } from '@/app/api/logError';
 import { prisma } from '@/app/api/prismaClient';
 
 /**
@@ -19,6 +20,8 @@ const isUrl = (value: string) => {
     const url = new URL(value);
     return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
+    // Not an error being suppressed: `URL` throwing *is* the answer to the
+    // question this predicate asks. Plain prose input reaches here constantly.
     return false;
   }
 };
@@ -167,6 +170,7 @@ export async function POST(req: Request) {
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
+    logError('POST /api/rag/chat', error);
     errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Update request status to failed

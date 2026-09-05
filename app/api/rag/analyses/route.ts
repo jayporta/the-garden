@@ -1,3 +1,4 @@
+import { logError } from '@/app/api/logError';
 import { prisma } from '@/app/api/prismaClient';
 
 /**
@@ -17,7 +18,8 @@ export async function GET() {
     });
 
     return Response.json(analyses);
-  } catch {
+  } catch (error) {
+    logError('GET /api/rag/analyses', error);
     return Response.json(
       { error: 'Failed to fetch analyses' },
       { status: 500 },
@@ -52,7 +54,8 @@ export async function DELETE(req: Request) {
     });
 
     return Response.json({ success: true });
-  } catch {
+  } catch (error) {
+    logError('DELETE /api/rag/analyses', error);
     return Response.json(
       { error: 'Failed to delete analysis' },
       { status: 500 },

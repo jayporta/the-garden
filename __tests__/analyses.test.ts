@@ -74,6 +74,7 @@ describe('/api/rag/analyses', () => {
     });
 
     it('should handle database errors', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockFindMany.mockRejectedValue(new Error('Database error'));
 
       const response = await GET();
@@ -81,6 +82,18 @@ describe('/api/rag/analyses', () => {
 
       expect(response.status).toBe(500);
       expect(result).toEqual({ error: 'Failed to fetch analyses' });
+      logged.mockRestore();
+    });
+
+    it('should record why the read failed, rather than swallowing it', async () => {
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockFindMany.mockRejectedValue(new Error('Database error'));
+
+      await GET();
+
+      expect(logged).toHaveBeenCalledOnce();
+      expect(logged.mock.calls[0].join(' ')).toContain('Database error');
+      logged.mockRestore();
     });
   });
 
@@ -129,6 +142,7 @@ describe('/api/rag/analyses', () => {
         headers: { 'Content-Type': 'application/json' },
       });
 
+      const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
       mockDeleteMany.mockRejectedValue(new Error('Delete failed'));
 
       const response = await DELETE(request);
@@ -136,6 +150,8 @@ describe('/api/rag/analyses', () => {
 
       expect(response.status).toBe(500);
       expect(result).toEqual({ error: 'Failed to delete analysis' });
+      expect(logged.mock.calls[0].join(' ')).toContain('Delete failed');
+      logged.mockRestore();
     });
   });
 });
