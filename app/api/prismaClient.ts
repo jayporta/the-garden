@@ -2,15 +2,15 @@ import { PrismaClient } from '@/app/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 
-// Colocation exception (CLAUDE.md): a connection pool is a process-wide
-// resource, not a per-feature one. Sharing it is the entire point — a module
-// that handed each caller its own client would defeat itself — so this cannot
-// live inside `app/rag/` or `app/debate/`. The file holds exactly one thing.
+// A connection pool is a process-wide resource, not a per-feature one. Sharing
+// it is the entire point — a module that handed each caller its own client
+// would defeat itself — so this sits above `app/rag/` and `app/debate/` rather
+// than inside either. The file holds exactly one thing.
 //
-// `pg` opens up to `max: 10` sockets per Pool. With a Pool constructed inline
-// per route file the connection ceiling grew with the route count: the two RAG
-// routes plus Debate Club's turn and cooldown routes would reach for up to 40
-// against a free-tier Postgres that caps direct connections near 60.
+// `pg` opens up to `max: 10` sockets per Pool, so a Pool constructed inline per
+// route file makes the connection ceiling scale with the route count: four
+// route files reach for up to 40 sockets against a free-tier Postgres that caps
+// direct connections near 60.
 
 /**
  * Builds a Prisma client on the driver-adapter path (`@prisma/adapter-pg` over
@@ -41,9 +41,8 @@ const globalForPrisma = globalThis as typeof globalThis & {
  * The application's single Prisma client, backed by one shared `pg.Pool`.
  *
  * Import this from every route handler; do not construct a `PrismaClient`
- * inline. Route tests keep working unchanged because they already mock
- * `@/app/generated/prisma/client`, `@prisma/adapter-pg` and `pg` — the three
- * modules this file imports.
+ * inline. Route tests mock the three modules this file imports:
+ * `@/app/generated/prisma/client`, `@prisma/adapter-pg` and `pg`.
  */
 export const prisma = globalForPrisma.prismaClient ?? createPrismaClient();
 
