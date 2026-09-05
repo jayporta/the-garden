@@ -233,6 +233,72 @@ verdict    relationship result · current fades · eyes dim
 
 Modelled as a pure state machine in `sequence.ts`; visuals subscribe to it.
 
+### Cooldowns — the free tier is the hard constraint
+
+Every model here runs on a free tier with a low ceiling, and OpenRouter allows
+50 requests a day without credits against a 10-turn debate costing ~10. Hitting
+a rate limit is a certainty, not an edge case, so a spent model must leave the
+pool rather than kill a debate on a 429.
+
+| Decision                           | Why                                                                                                                                                                                                                                                                          |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Reactive, not predictive           | No vendor states clearly whether a limit is per-model or account-wide, so any local tally guesses. `retry-after` and `x-ratelimit-*` report what actually happened.                                                                                                          |
+| Postgres, not `localStorage`       | A cooldown can run for hours and the user will not be on the page when it lifts. Storage can be cleared or blocked, React state dies on navigation, and the quota is an account-wide server fact.                                                                            |
+| No push channel                    | Next 16 App Router closes a route's connection on timeout or after the response, and SSE has no documented disconnect handling. An absent client cannot be pushed to; a present one sets its own timer.                                                                      |
+| Store `until`, derive status       | Status is a function of `(until, now)`. A persisted status string goes stale the instant the clock passes expiry.                                                                                                                                                            |
+| `now` injected everywhere          | Matches the feature's only existing precedent for nondeterminism, `spin(rng = Math.random)`. No test here mocks time.                                                                                                                                                        |
+| Scope is per gateway               | A 429 on OpenRouter likely means all of its models are spent, since the ceiling is account-wide. The same rule on Groq or Google would be wrong — their free limits are per model, so a blanket rule would take Gemini 2.5 Flash Lite offline because Flash hit its own cap. |
+| Model and gateway compose as `max` | Either can legitimately be the longer one. A gateway cooldown is a floor under every model it serves, and never shortens a model's own.                                                                                                                                      |
+
+**Schema.** One table, scope-discriminated, because a model cooldown and a
+gateway cooldown are the same fact at two granularities:
+
+```prisma
+model DebateCooldown {
+  id        String   @id @default(uuid())
+  scope     String   // "model", "gateway"
+  target    String   // FreeModelId when scope="model"; ModelGateway when "gateway"
+  until     DateTime // status is derived from (until, now) — never stored
+  reason    String   // "retry-after", "quota-header", "gateway-default"
+  createdAt DateTime @default(now())
+
+  @@unique([scope, target])
+}
+```
+
+`scope` and `reason` are plain `String` columns with their legal values in a
+comment, not a Prisma `enum` or a `CHECK` constraint. That is the convention
+`Source.type` and `Request.status` already set, and the read path treats an
+unrecognised scope as inert rather than trusting it. Reviewed and deliberately
+kept — revisit only if a writer ever appears outside the turn route.
+
+Bounded at 18 rows forever (15 models + 3 gateways) with no pruning job, which
+is why it is upserted per target rather than appended. An append-only history
+would risk filling a free-tier row cap on any write-path bug. No
+`@@index([until])` — at 18 rows a sequential scan wins, and an unused index is
+noise.
+
+**Boundary.** Everything pure lives in `app/debate/*.ts`; everything touching
+Prisma lives in `app/api/debate/**/route.ts`. That is what this codebase already
+does — there is no repository layer — and it guarantees no client bundle can
+transitively pull in `pg`, with no new machinery.
+
+**`GET /api/debate/cooldowns` is the only cooldown endpoint, and is read-only.**
+A client-writable cooldown would be a one-request denial of service against the
+app's own quota state, and it contradicts the reactive trigger: a cooldown is a
+fact a vendor stated, not a claim a client can make. Writes happen only inside
+the turn route, which has the vendor's response in hand — a pre-flight re-check
+returning **409** (not 429; the vendor did not refuse, we did), and on a real 429
+a record plus the observation echoed in the body so the client merges it with no
+round trip.
+
+**The mirror match.** When exactly one model survives, it faces itself rather
+than the app going dark — good versus evil, personalities locked and read-only
+on both chest panels, evil rendered as a palette swap on the same sprite sheets.
+This reverses task 3's "mirror matches are structurally impossible", which was
+right for a fixed 15-model registry but degrades to "unspinnable" once the pool
+shrinks.
+
 ### Personality system
 
 Six axes, `0..100`, each visible in a transcript.
@@ -274,8 +340,11 @@ one cohesive subsystem, not a kind grab-bag.
 ```
 app/debate/
   page.tsx                    server entry, renders DebateClient
+  layout.tsx                  server component; wraps children in CooldownProvider
   components/
     DebateClient.tsx          'use client'; dynamic-imports Stage ssr:false
+    cooldownContext.ts        'use client'; context + useCooldowns hook
+    CooldownProvider.tsx      'use client'; state, hydration, one expiry timer
     scene/
       Stage.tsx               <Canvas>, lighting, EffectComposer (bloom only)
       Robot.tsx               sprite playback, eye-glow + panel layers
@@ -290,16 +359,22 @@ app/debate/
   sequence.ts                 pure state machine
   sprites.ts                  sheet manifest, frame timing, anchors, panel rect
   models.ts                   FREE_MODELS {id,label,author,gateway,modelId}
-  spin.ts                     spin(rng) -> { leftModelId, topicId, rightModelId }
+  spin.ts                     spin(rng, pool) -> SpinResult | null
+  cooldowns.ts                availability predicates over a CooldownMap
+  rateLimitHeaders.ts         vendor rate-limit headers -> a CooldownObservation
   personas.ts                 Persona, PERSONALITY_AXES, compilePersonaPrompt,
                               derivePersonalityType, deriveSimParams
   meters.ts                   Meters, applyTurnEffects, hasConceded, relationship
   topics.ts                   DEBATE_TOPICS, typed const
   art_references/             reference art the sprite sheets are drawn from
-  __tests__/                  sequence · spin · personas · meters
+  __tests__/                  sequence · spin · personas · meters ·
+                              cooldowns · rateLimitHeaders
 
+app/api/prismaClient.ts       the one shared PrismaClient + pg.Pool
 app/api/debate/turn/route.ts  POST one turn; resolves gateway from registry
-__tests__/debateTurn.test.ts  route test (matches existing convention)
+app/api/debate/cooldowns/route.ts  GET cooldowns in force (read-only)
+__tests__/debateTurn.test.ts       route test (matches existing convention)
+__tests__/debateCooldowns.test.ts  route test
 
 docs/debate-club/
   DESIGN.md                   this document
@@ -318,25 +393,34 @@ Add `/debate` to `links` in `app/components/Nav.tsx` (currently `/rag` only;
 ## Task breakdown
 
 Each task is one reviewable unit, one subagent review, one conventional commit.
-Tasks 1–8 need no artwork and no WebGL; the app is fully playable by task 8.
+Tasks 1–9 need no artwork and no WebGL; the app is fully playable by task 9.
 
-| #   | Task                                                                 | Commit type |
-| --- | -------------------------------------------------------------------- | ----------- |
-| 1   | `docs/debate-club/` DESIGN + PROGRESS; AGENTS.md pointer             | `docs`      |
-| 2   | Pinned deps installed; AGENTS.md records the version traps           | `build`     |
-| 3   | `topics.ts`, `models.ts`, `spin.ts` + tests                          | `feat`      |
-| 4   | `personas.ts` + tests                                                | `feat`      |
-| 5   | `meters.ts` + tests                                                  | `feat`      |
-| 6   | `sequence.ts` state machine + tests                                  | `feat`      |
-| 7   | `/api/debate/turn` + route test                                      | `feat`      |
-| 8   | Grey-box `/debate`: button, instant spin, live debate, HUD, Nav link | `feat`      |
-| 9   | Chest-panel controls (sliders/gauges) + `localStorage`               | `feat`      |
-| 10  | r3f `Stage`: canvas, camera, lighting, grey-box robots + cabinet     | `feat`      |
-| 11  | Reel cylinders + stagger-settle animation                            | `feat`      |
-| 12  | Electricity shader + bloom + jolt                                    | `feat`      |
-| 13  | Speech bubbles via drei `<Html>`                                     | `feat`      |
-| 14  | Sprite-sheet integration — **blocked on your artwork**               | `feat`      |
-| 15  | Palette pass — **deferred, your call**                               | `style`     |
+**Renumbered on 2026-09-04.** The cooldown core was inserted as task 7 and
+everything below it shifted by one, so any note written before that date
+referring to "task 7" (the turn route) now means task 8, and "task 8" (grey-box
+`/debate`) now means task 9.
+
+| #   | Task                                                                                                                             | Commit type |
+| --- | -------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| 1   | `docs/debate-club/` DESIGN + PROGRESS; AGENTS.md pointer                                                                         | `docs`      |
+| 2   | Pinned deps installed; AGENTS.md records the version traps                                                                       | `build`     |
+| 3   | `topics.ts`, `models.ts`, `spin.ts` + tests                                                                                      | `feat`      |
+| 4   | `personas.ts` + tests                                                                                                            | `feat`      |
+| 5   | `meters.ts` + tests                                                                                                              | `feat`      |
+| 6   | `sequence.ts` state machine + tests                                                                                              | `feat`      |
+| 7   | Cooldown core: schema, `cooldowns.ts`, `rateLimitHeaders.ts`, `spin(rng, pool)`, GET route                                       | `feat`      |
+| 8   | `/api/debate/turn` + route test — plus the pre-flight 409 and the cooldown write paths                                           | `feat`      |
+| 9   | Grey-box `/debate`: button, instant spin, live debate, HUD, Nav link — plus `layout.tsx`, the provider, unlit faces, dark button | `feat`      |
+| 10  | Chest-panel controls (sliders/gauges) + `localStorage`                                                                           | `feat`      |
+| 11  | r3f `Stage`: canvas, camera, lighting, grey-box robots + cabinet                                                                 | `feat`      |
+| 12  | Reel cylinders + stagger-settle animation — plus the evil palette swap                                                           | `feat`      |
+| 13  | Electricity shader + bloom + jolt                                                                                                | `feat`      |
+| 14  | Speech bubbles via drei `<Html>`                                                                                                 | `feat`      |
+| 15  | Sprite-sheet integration — **blocked on your artwork**                                                                           | `feat`      |
+| 16  | Palette pass — **deferred, your call**                                                                                           | `style`     |
+
+The cooldown provider waits for task 9 rather than landing with task 7: it has
+no consumer until there is a UI, and building it earlier is orphaned code.
 
 ---
 
@@ -384,9 +468,12 @@ two orders of magnitude and they shape the turn cap:
 
 One debate at the default 10-turn cap costs ~10 requests. On OpenRouter's
 no-credit tier that is **five debates a day** before the reels start returning
-429s. Two consequences: the 429-as-paused-debate handling in _Risks_ is a
-certainty rather than a precaution, and the spin should not be free to land two
-OpenRouter models when a cheaper gateway is available. Revisit at task 7.
+429s. Two consequences. The rate-limit handling in _Risks_ is a certainty rather
+than a precaution — which is what _Cooldowns_ above, task 7, exists for. And the
+spin should arguably not be free to land two OpenRouter models when a cheaper
+gateway is available; that one is still open, and deliberately outside task 7,
+which keeps the draw uniform over whatever the cooldowns leave rather than
+weighting it by gateway.
 
 ## Env vars
 
@@ -410,8 +497,19 @@ Route returns a clear 400 naming a missing key rather than throwing.
 3. **Sprite jitter.** Inconsistent frame registration reads as a broken robot.
 4. **Smooth-motion trap.** Lock sprite playback to 12fps even though the scene
    renders at 60, or the period feel dies.
-5. **Rate limits.** Free tiers throttle. Surface 429s as a paused debate the user
-   can resume, not a crash.
+5. **Rate limits.** Free tiers throttle, and on this budget they certainly will.
+   Handled by the cooldown system: spent models leave the pool before the spin,
+   and stay on the reel drawn unlit.
+
+   A 429 **mid-debate** ends that debate in a terminal state — "this contestant
+   is disqualified, out of turns until 14:32" — with the partial transcript kept
+   and marked incomplete. Not the paused-and-resumable state an earlier draft of
+   this document promised: a cooldown can run for hours, so "resume" is a button
+   that stays dark. Not a substitute model either, because swapping a contestant
+   silently changes what the transcript means — the persona was installed into
+   one specific model, and half a transcript from each is not a debate anyone can
+   read. The game-show framing gives the honest option a natural voice.
+
 6. **Per-frame allocation.** r3f `useFrame` runs 60×/sec; allocating vectors or
    objects there causes GC stutter. Explicit review-checklist item.
 
@@ -440,8 +538,13 @@ Persist personas and debates: `Persona`, `Debate` (topic, models, status) →
 8. Stop mid-debate — loop stops before the next turn fires.
 9. Remove `GROQ_API_KEY` — clear error naming the key, not a crash.
 10. `npm test` — existing 9 tests pass, plus `sequence`, `spin`,
-    `applyTurnEffects`, `deriveSimParams`, `compilePersonaPrompt`.
+    `applyTurnEffects`, `deriveSimParams`, `compilePersonaPrompt`, `cooldowns`,
+    `rateLimitHeaders`.
 11. `npm run lint` and `npm run format:check` — both exit 0.
+12. Seed a gateway cooldown (`openrouter`, `+1h`): `GET /api/debate/cooldowns`
+    returns it, and the OpenRouter faces on both reels go unlit.
+13. Seed cooldowns leaving exactly one model: the button stays lit and spins a
+    mirror match. Leave none: the button goes dark.
 
 ## Notes
 

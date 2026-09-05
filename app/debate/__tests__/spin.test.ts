@@ -50,6 +50,8 @@ describe('spin', () => {
   });
 
   it('never lands the same model on both sides, for any reel position', () => {
+    // Holds for any pool of two or more; the one-model mirror match is covered
+    // in the shrunken-pool block below.
     for (let left = 0; left < FREE_MODELS.length; left++) {
       for (let right = 0; right < FREE_MODELS.length - 1; right++) {
         const result = spin(
@@ -93,5 +95,65 @@ describe('spin', () => {
 
   it('defaults to Math.random when no rng is supplied', () => {
     expect(() => spin()).not.toThrow();
+  });
+});
+
+describe('spin — a pool the cooldowns have shrunk', () => {
+  /** The first `count` models, standing in for the survivors of a quota squeeze. */
+  function testPool(count: number) {
+    return FREE_MODELS.slice(0, count);
+  }
+
+  it('returns null when every model is cooling, without drawing an rng value', () => {
+    let draws = 0;
+    const countingRng = () => {
+      draws++;
+      return 0;
+    };
+
+    expect(spin(countingRng, testPool(0))).toBeNull();
+    expect(draws).toBe(0);
+  });
+
+  it('puts the last model up against itself rather than going dark', () => {
+    const result = spin(testScriptedRng([0, 0, 0]), testPool(1));
+
+    expect(result).not.toBeNull();
+    expect(result?.leftModelId).toBe(FREE_MODELS[0].id);
+    expect(result?.rightModelId).toBe(FREE_MODELS[0].id);
+  });
+
+  it('still draws three times on a mirror match, so a scripted rng stays aligned', () => {
+    let draws = 0;
+    const countingRng = () => {
+      draws++;
+      return 0;
+    };
+
+    spin(countingRng, testPool(1));
+
+    expect(draws).toBe(3);
+  });
+
+  it('keeps the two sides distinct as soon as the pool has two models', () => {
+    for (let left = 0; left < 2; left++) {
+      const result = spin(
+        testScriptedRng([testBucket(left, 2), 0, 0]),
+        testPool(2),
+      );
+
+      expect(result?.rightModelId).not.toBe(result?.leftModelId);
+    }
+  });
+
+  it('draws only from the pool it was given', () => {
+    const pool = testPool(3);
+    const poolIds = new Set(pool.map((model) => model.id));
+
+    for (let i = 0; i < 200; i++) {
+      const result = spin(Math.random, pool);
+      expect(poolIds.has(result!.leftModelId)).toBe(true);
+      expect(poolIds.has(result!.rightModelId)).toBe(true);
+    }
   });
 });
