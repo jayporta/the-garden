@@ -10,6 +10,8 @@
  * and `topics.ts` take with their own ids.
  */
 
+import type { Meters } from './meters';
+
 /** Metadata for one personality axis, describing its endpoints. */
 export type PersonalityAxis = {
   readonly key: string;
@@ -49,23 +51,6 @@ export type PersonalityAxisKey = (typeof PERSONALITY_AXES)[number]['key'];
  * {@link PERSONALITY_AXES}.
  */
 export type Persona = Readonly<Record<PersonalityAxisKey, number>>;
-
-/**
- * A minimal stand-in for the meters {@link compilePersonaPrompt} reads.
- *
- * `meters.ts` (task 5) does not exist yet. This covers only the two fields
- * DESIGN.md's own example folds into the prompt — Patience and Conviction —
- * both assumed `0..100` to match the personality axes' scale.
- *
- * **Placeholder.** When task 5 lands the canonical `Meters` type, it must
- * replace this type's use in {@link compilePersonaPrompt}'s signature and
- * delete this type. Kept local, and not re-exported by any other module, so
- * the thing to delete is everything that references it in this one file.
- */
-export type PersonaPromptMeters = {
-  readonly patience: number;
-  readonly conviction: number;
-};
 
 /**
  * The simulation constants a persona's axes resolve to.
@@ -195,10 +180,7 @@ const LOSING_CONVICTION_INSTRUCTION =
  * @param meters - The contestant's current Patience and Conviction.
  * @returns Newline-separated instructions, low-meter lines last.
  */
-export function compilePersonaPrompt(
-  persona: Persona,
-  meters: PersonaPromptMeters,
-): string {
+export function compilePersonaPrompt(persona: Persona, meters: Meters): string {
   const lines: string[] = [];
 
   for (const axis of PERSONALITY_AXES) {

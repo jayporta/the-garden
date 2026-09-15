@@ -5,8 +5,8 @@ import {
   compilePersonaPrompt,
   derivePersonalityType,
   type Persona,
-  type PersonaPromptMeters,
 } from '@/app/debate/personas';
+import type { Meters } from '@/app/debate/meters';
 
 /** A persona with every axis at the neutral midpoint, overridden per test. */
 function testPersona(overrides: Partial<Persona> = {}): Persona {
@@ -17,9 +17,7 @@ function testPersona(overrides: Partial<Persona> = {}): Persona {
 }
 
 /** Healthy meters (no low-meter prompt instructions fire), overridden per test. */
-function testMeters(
-  overrides: Partial<PersonaPromptMeters> = {},
-): PersonaPromptMeters {
+function testMeters(overrides: Partial<Meters> = {}): Meters {
   return { patience: 100, conviction: 100, ...overrides };
 }
 
