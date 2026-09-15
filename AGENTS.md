@@ -6,6 +6,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 <!-- END:nextjs-agent-rules -->
 
+## Claude rule:
+Load skills/react-typescript, skills/conventional-commits, and skills/doc-comments
+
 ## Commands
 
 - `npm run dev` — start dev server (Next.js 16, App Router)
