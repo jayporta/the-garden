@@ -56,6 +56,25 @@ describe('logError', () => {
     );
   });
 
+  it('redacts a whole password containing the @ that delimits it', () => {
+    const spy = testCaptureConsoleError();
+
+    logError(
+      'ctx',
+      new Error(
+        'failed to connect to postgresql://garden:hunt@er2@db.example.com:5432/garden',
+      ),
+    );
+
+    const line = spy.mock.calls[0].join(' ');
+    // Stopping at the first `@` would leave `er2` behind.
+    expect(line).not.toContain('hunt');
+    expect(line).not.toContain('er2');
+    expect(line).toContain(
+      'postgresql://garden:***@db.example.com:5432/garden',
+    );
+  });
+
   it('redacts an API key that rode along in a message', () => {
     const spy = testCaptureConsoleError();
 
@@ -64,6 +83,54 @@ describe('logError', () => {
     const line = spy.mock.calls[0].join(' ');
     expect(line).not.toContain('sk-abcd1234efgh5678ijkl');
     expect(line).toContain('sk-***');
+  });
+
+  it('redacts an OpenRouter key, which shares the OpenAI prefix', () => {
+    const spy = testCaptureConsoleError();
+
+    logError('ctx', new Error('401 from key sk-or-v1-abcd1234efgh5678'));
+
+    const line = spy.mock.calls[0].join(' ');
+    expect(line).not.toContain('abcd1234efgh5678');
+    expect(line).toContain('sk-***');
+  });
+
+  it('redacts a Google key, whose prefix the OpenAI pattern does not reach', () => {
+    const spy = testCaptureConsoleError();
+
+    logError('ctx', new Error('403 from key AIzaSyAbCdEf0123456789xyz'));
+
+    const line = spy.mock.calls[0].join(' ');
+    expect(line).not.toContain('AIzaSyAbCdEf0123456789xyz');
+    expect(line).toContain('AIza***');
+  });
+
+  it('redacts a Google key issued with the newer dotted prefix', () => {
+    const spy = testCaptureConsoleError();
+
+    logError(
+      'ctx',
+      new Error('403 from key AQ.Ab8RN6J_0cD1eF2gH3iJ4kL5mN6oP7qR8sT9uV0wX1yZ'),
+    );
+
+    const line = spy.mock.calls[0].join(' ');
+    expect(line).not.toContain('Ab8RN6J_0cD1eF2gH3iJ4kL5mN6oP7qR8sT9uV0wX1yZ');
+    expect(line).toContain('AQ.***');
+  });
+
+  it('redacts every vendor key present in one message', () => {
+    const spy = testCaptureConsoleError();
+
+    logError(
+      'ctx',
+      new Error('sk-abcd1234efgh5678ijkl then AIzaSyAbCdEf0123456789'),
+    );
+
+    const line = spy.mock.calls[0].join(' ');
+    expect(line).not.toContain('abcd1234efgh5678ijkl');
+    expect(line).not.toContain('AIzaSyAbCdEf0123456789');
+    expect(line).toContain('sk-***');
+    expect(line).toContain('AIza***');
   });
 
   it('leaves an ordinary message untouched', () => {
