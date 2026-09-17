@@ -134,7 +134,6 @@ export async function POST(req: Request) {
     : defaultOpenAI;
 
   let summaryText = '';
-  let errorMessage: string | undefined;
 
   try {
     const result = streamText({
@@ -170,8 +169,11 @@ export async function POST(req: Request) {
 
     return result.toUIMessageStreamResponse();
   } catch (error) {
+    // The caller gets a fixed message on purpose. This `catch` covers both
+    // Prisma and the upstream provider: a connection failure carries
+    // `DATABASE_URL` password and all, and an upstream 401 carries the vendor
+    // key. Only the redacted log records the cause.
     logError('POST /api/rag/chat', error);
-    errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Update request status to failed
     await prisma.request.update({
@@ -179,7 +181,7 @@ export async function POST(req: Request) {
       data: { status: 'failed' },
     });
 
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    return new Response(JSON.stringify({ error: 'Failed to analyze input' }), {
       status: 500,
       headers: { 'content-type': 'application/json' },
     });

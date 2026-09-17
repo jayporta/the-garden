@@ -225,12 +225,56 @@ describe('/api/rag/chat', () => {
     const result = await response.json();
 
     expect(response.status).toBe(500);
-    expect(result.error).toBe('Network error');
+    expect(result.error).toBe('Failed to analyze input');
     expect(mockRequestUpdate).toHaveBeenCalledWith({
       where: { id: 'request-id' },
       data: { status: 'failed' },
     });
     expect(logged.mock.calls[0].join(' ')).toContain('Network error');
+    logged.mockRestore();
+  });
+
+  it('should keep credentials out of the 500 body when an error carries them', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { streamText, convertToModelMessages } = await import('ai');
+    // Both shapes this catch genuinely sees: a `pg` connection string and an
+    // upstream key echoed back inside a 401.
+    (streamText as unknown as Mock).mockImplementation(() => {
+      throw new Error(
+        'ECONNREFUSED postgresql://garden:hunter2@db.example.com:5432/garden using sk-abcd1234efgh5678ijkl',
+      );
+    });
+    (convertToModelMessages as unknown as Mock).mockResolvedValue([]);
+
+    const { POST } = await import('@/app/api/rag/chat/route');
+
+    const request = new Request('http://localhost/api/rag/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          {
+            id: '1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'https://example.com' }],
+          },
+        ],
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(body).not.toContain('hunter2');
+    expect(body).not.toContain('sk-abcd1234efgh5678ijkl');
+    expect(body).not.toContain('db.example.com');
+
+    // The cause still reaches the log, redacted rather than dropped.
+    const line = logged.mock.calls[0].join(' ');
+    expect(line).toContain('ECONNREFUSED');
+    expect(line).not.toContain('hunter2');
+    expect(line).not.toContain('sk-abcd1234efgh5678ijkl');
     logged.mockRestore();
   });
 });
