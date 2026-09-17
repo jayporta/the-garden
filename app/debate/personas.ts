@@ -130,6 +130,12 @@ function bandOf(value: number): PromptBand {
  *
  * The copy itself is a first draft; DESIGN.md already flags the exact prompt
  * language as something to tune once real transcripts exist.
+ *
+ * `ego.high` and `humour.high` are scoped to the argument and the topic rather
+ * than to the opponent. An instruction to talk down to a person licenses
+ * personal derogation directly, and it stacks with `aggression.high` and the
+ * low-patience line from `meters.ts`. Aiming the same arrogance at the argument
+ * keeps the dial's bite without asking for it. See `safety.ts`.
  */
 const AXIS_PROMPT_BANDS = {
   verbosity: {
@@ -146,7 +152,7 @@ const AXIS_PROMPT_BANDS = {
   },
   ego: {
     low: "Stay humble. Hedge your claims and credit the other side's point.",
-    high: 'Be arrogant. Talk down to the opponent and oversell your own certainty.',
+    high: 'Be arrogant. Treat the opposing argument as beneath a serious reply, and oversell your own certainty.',
   },
   stubbornness: {
     low: 'Be persuadable. Update your position when the other side scores a point.',
@@ -154,7 +160,7 @@ const AXIS_PROMPT_BANDS = {
   },
   humour: {
     low: 'Keep it dry. Deadpan delivery, no jokes.',
-    high: 'Be silly. Crack jokes and use absurd comparisons.',
+    high: 'Be silly. Crack jokes about the topic and reach for absurd comparisons of it.',
   },
 } as const satisfies Readonly<
   Record<PersonalityAxisKey, { readonly low: string; readonly high: string }>

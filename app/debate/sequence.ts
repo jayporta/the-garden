@@ -1,8 +1,8 @@
 /**
  * The pure state machine driving one debate, from the idle slot machine
  * through to a verdict. Visuals subscribe to this state; this module has no
- * I/O of its own — it never fetches a turn's text (task 8's turn route does
- * that) and never renders anything (task 9's components do that).
+ * I/O of its own — it never fetches a turn's text (task 9's turn route does
+ * that) and never renders anything (task 10's components do that).
  *
  * DESIGN.md's own reviewer checklist singles out "sequence states" as a
  * single-source-of-truth risk: every layer that cares what stage a debate is

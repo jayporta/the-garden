@@ -7,6 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 <!-- END:nextjs-agent-rules -->
 
 ## Claude rule:
+
 Load skills/react-typescript, skills/conventional-commits, and skills/doc-comments
 
 ## Commands
@@ -22,7 +23,7 @@ Load skills/react-typescript, skills/conventional-commits, and skills/doc-commen
 
 ## Architecture
 
-This is an experimental playground app ("The Garden"). Each feature is an independent experiment; they do not share code beyond `app/components/`.
+This is an experimental playground app ("The Garden"). Each feature is an independent experiment; they do not share code beyond `app/components/` and `app/lib/moderation/`, the content-safety screening library described below.
 
 | Feature     | Route     | Docs                                                                    |
 | ----------- | --------- | ----------------------------------------------------------------------- |
@@ -50,7 +51,11 @@ Debate Club adds one standalone table with no relations: `DebateCooldown` (`scop
 
 **Error handling (server):** route handlers cannot rethrow, so a `catch` there is the end of the line for an error. Every one calls `logError` from `app/api/logError.ts`, which redacts URL credentials and `sk-` keys before writing — Prisma and `pg` put `DATABASE_URL`, password and all, into their messages. A bare `catch {}` is only acceptable where the throw _is_ the answer (see `isUrl` in the chat route), and that needs a comment saying so.
 
-**Env vars:** `DATABASE_URL` (Postgres), `OPENAI_API_KEY` (optional — falls back to the default `openai` provider from `@ai-sdk/openai` if unset), `OPENAI_MODEL` (optional, defaults to `gpt-4o-mini`).
+**Env vars:** `DATABASE_URL` (Postgres), `OPENAI_API_KEY` (optional — falls back to the default `openai` provider from `@ai-sdk/openai` if unset, and also keys the free OpenAI Moderation tier of the content-safety screen), `OPENAI_MODEL` (optional, defaults to `gpt-4o-mini`). The screening tiers beyond OpenAI's are keyed separately and each is skipped entirely when its key is unset: `OPENROUTER_API_KEY` (the Nemotron content-safety tier) and `GEMINI_API_KEY` (the Gemini tier, debate only). Each of those two tiers takes an optional model override — `OPENROUTER_GUARD_MODEL` and `GEMINI_GUARD_MODEL` — because a hosted model id is perishable and a request for a retired one fails open, removing the tier rather than breaking the app. Gemini's default is deliberately a rolling `-latest` alias for that reason; the overrides pin a specific id when reproducibility matters more.
+
+**Content safety** lives in `app/lib/moderation/`, a screening library shared by any feature that generates model text — not debate-specific, despite Debate Club being its first consumer. It holds the local word-list screen (`categories.ts`, `profaneRoots.ts`, `profanityMatcher.ts`, `profanityWordLists.ts`, `doublingTolerantPattern.ts`, `normaliseForScreening.ts`), the pure `screenLocally` tier (`screen.ts`), the three networked tiers in the order they run (`openAiModeration.ts`, then `nemotronGuard.ts`, then `geminiGuard.ts` with its response reader `geminiVerdict.ts`), the shared `fetch` seam (`fetchImpl.ts`), the unreadable-answer signal (`unreadableAnswer.ts`), and the orchestrator (`moderateText.ts`) that runs every tier cheapest first, stopping at the first violation. **Every networked tier fails open**, so with no keys configured the local screen alone decides and the app still runs.
+
+**No screened term is written in this repo.** The local tier's vocabulary is read out of the installed `obscenity` package at module load by `profaneRoots.ts` — the one place that reads it, so the matcher and the test probes cannot drift — with its roots re-anchored to whole words, suffix-expanded and composed with a list of innocent prefixes to recover compounds. The only word lists checked in — in `profanityWordLists.ts` — are ordinary English: suffixes, compound prefixes and the whitelist of innocent words the anchored patterns would otherwise flag. Tests draw their sample terms from the installed dataset at runtime via `__tests__/probeTerms.ts`; **do not write a screened term into a source or test file to reproduce a failure.** The trade is that a local match reports only `LOCAL_SCREEN_CATEGORY` rather than which protected characteristic was attacked, since the dataset carries no such metadata. `app/debate/safety.ts` holds only the debate-specific policy built on top: `SAFETY_PREAMBLE`/`SAFETY_REMINDER` and the retry policy `decideTurnOutcome`. Every networked tier uses a plain `fetch` against an HTTP endpoint rather than a provider package, which also keeps them clear of the provider-spec duplication noted below. One exception to failing open: a tier whose vendor _answered_ with something unparsable blocks rather than passing, because an unreadable answer is a changed contract rather than an outage.
 
 **Testing:** vitest with `environment: "node"` as the default. Route tests (`__tests__/*.test.ts`) mock `@/app/generated/prisma/client`, `@prisma/adapter-pg`, `pg`, and the `ai`/`@ai-sdk/openai` modules, then dynamically `import()` the route handler so the mocks take effect first — follow this pattern for new route tests rather than importing the handler at the top of the file. The `@prisma/adapter-pg` and `pg` mocks look redundant — the suite stays green without them, since the generated-client mock already makes `PrismaClient` ignore its adapter — but **keep them**: they are what stops a real `pg.Pool` from being constructed around the real `DATABASE_URL` inside the test process.
 
@@ -69,6 +74,13 @@ node -p "require('ai/package.json').dependencies['@ai-sdk/provider']"
 ```
 
 Moving to `ai@7` means moving every provider together, in one commit.
+
+**Installed providers carry their own copy of the provider spec.** `ai@6` pins `@ai-sdk/provider` to an exact `3.0.10`, while the installed `@ai-sdk/groq@3` and `@ai-sdk/google@3` both require `^3.0.15`, so npm resolves second copies under each provider's own `node_modules/`. Nothing calls either through the AI SDK today, and every screening tier reaches its vendor over plain HTTP rather than crossing that boundary. Check it with:
+
+```
+node -p "require('ai/package.json').dependencies['@ai-sdk/provider']"
+find node_modules -path "*@ai-sdk/provider/package.json"
+```
 
 **`@react-three/fiber@9` peers `react >=19 <19.3`.** Bumping React to 19.3 breaks the build. Upgrade fiber first, or not at all.
 
