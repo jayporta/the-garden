@@ -277,4 +277,86 @@ describe('/api/rag/chat', () => {
     expect(line).not.toContain('sk-abcd1234efgh5678ijkl');
     logged.mockRestore();
   });
+
+  it('should return a fixed 500 when the failure precedes the Request row', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { convertToModelMessages } = await import('ai');
+    (convertToModelMessages as unknown as Mock).mockResolvedValue([]);
+    mockSourceUpsert.mockRejectedValue(
+      new Error(
+        'ECONNREFUSED postgresql://garden:hunter2@db.example.com:5432/garden',
+      ),
+    );
+
+    const { POST } = await import('@/app/api/rag/chat/route');
+
+    const request = new Request('http://localhost/api/rag/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          {
+            id: '1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'https://example.com' }],
+          },
+        ],
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(body).not.toContain('hunter2');
+    expect(JSON.parse(body).error).toBe('Failed to analyze input');
+    // No row exists yet, so there is nothing to mark failed.
+    expect(mockRequestUpdate).not.toHaveBeenCalled();
+    logged.mockRestore();
+  });
+
+  it('should still answer when marking the Request failed throws', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { streamText, convertToModelMessages } = await import('ai');
+    (streamText as unknown as Mock).mockImplementation(() => {
+      throw new Error('upstream refused');
+    });
+    (convertToModelMessages as unknown as Mock).mockResolvedValue([]);
+    // Set explicitly: `clearAllMocks` keeps implementations, so a neighbouring
+    // test's rejection would otherwise decide this one.
+    mockSourceUpsert.mockResolvedValue({ id: 'source-id' });
+    // The database is what failed, so the status write fails too.
+    mockRequestUpdate.mockRejectedValue(
+      new Error(
+        'ECONNREFUSED postgresql://garden:hunter2@db.example.com:5432/garden',
+      ),
+    );
+
+    const { POST } = await import('@/app/api/rag/chat/route');
+
+    const request = new Request('http://localhost/api/rag/chat', {
+      method: 'POST',
+      body: JSON.stringify({
+        messages: [
+          {
+            id: '1',
+            role: 'user',
+            parts: [{ type: 'text', text: 'https://example.com' }],
+          },
+        ],
+      }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const response = await POST(request);
+    const body = await response.text();
+
+    expect(response.status).toBe(500);
+    expect(JSON.parse(body).error).toBe('Failed to analyze input');
+    expect(body).not.toContain('hunter2');
+    // Both failures are recorded, redacted.
+    expect(logged).toHaveBeenCalledTimes(2);
+    expect(logged.mock.calls.flat().join(' ')).not.toContain('hunter2');
+    logged.mockRestore();
+  });
 });
