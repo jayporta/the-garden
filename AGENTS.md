@@ -35,9 +35,11 @@ This is an experimental playground app ("The Garden"). Each feature is an indepe
 **Data flow (RAG-light):** `RagForm` (`app/rag/components/RagForm.tsx`, client component) uses `@ai-sdk/react`'s `useChat`/`Chat` with `DefaultChatTransport` pointed at `/api/rag/chat`. Submitting text or a URL posts to `app/api/rag/chat/route.ts`, which:
 
 1. Pulls the latest user text out of the AI SDK message `parts`.
-2. If the text is a URL, upserts a `Source` row and fetches page content.
+2. If the text is a URL, upserts a `Source` row holding it. **The route never fetches the URL** — it appends the address to the system prompt and asks the model to summarize the page. `streamText` is called with no `tools`, so the model has no way to fetch it either; nothing server-side ever requests a user-supplied host, and there is no SSRF surface here to defend. Treat any claim that the page content is retrieved as false until a fetch actually exists.
 3. Creates a `Request` row (status `pending`), builds a system prompt instructing the model to act as a document analyzer (not a chatbot), and streams a completion via `streamText` from the `ai` SDK using an OpenAI provider.
-4. On completion, persists a `Summary` row and flips the `Request` status to `completed`/`failed`, then returns `result.toUIMessageStreamResponse()`.
+4. On completion, persists a `Summary` row and flips the `Request` status to `completed`, then returns `result.toUIMessageStreamResponse()`.
+
+The whole handler body sits in one `try`. Every throw — including one from `req.json()` or from the `Source`/`Request` writes before the model call — goes to `failRequest` (`app/api/rag/chat/failRequest.ts`), which logs the redacted cause, marks the `Request` failed when one was created, and returns a **fixed** message. The body is fixed rather than the caught `error.message` because these errors carry `DATABASE_URL` and vendor keys; see the note on `logError` under **Error handling (server)**. Marking the row is best-effort, in its own nested `try`, since the database is often what failed.
 
 `app/rag/analyses/page.tsx` lists past `Request`s with their `Source`/`Summary` and can `DELETE` one (the route deletes `Summary` rows first, then the `Request`, due to the FK). It reads through TanStack Query: `app/rag/analysesApi.ts` holds the wire types and the two calls, `useAnalyses`/`useDeleteAnalysis` wrap them, and `AnalysisCard` renders a row. A successful delete **invalidates** the query key rather than splicing local state, so the list is always what the server says still exists.
 
