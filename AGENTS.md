@@ -25,12 +25,12 @@ Load skills/react-typescript, skills/conventional-commits, and skills/doc-commen
 
 This is an experimental playground app ("The Garden"). Each feature is an independent experiment; they do not share code beyond `app/components/` and `app/lib/moderation/`, the content-safety screening library described below.
 
-| Feature     | Route     | Docs                                                                    |
-| ----------- | --------- | ----------------------------------------------------------------------- |
-| RAG-light   | `/rag`    | described below                                                         |
-| Debate Club | `/debate` | [`docs/debate-club/`](docs/debate-club/) — **read `PROGRESS.md` first** |
+| Feature     | Route     | Docs                                                                        |
+| ----------- | --------- | --------------------------------------------------------------------------- |
+| RAG-light   | `/rag`    | described below                                                             |
+| Debate Club | `/debate` | `docs/debate-club/` (local-only, gitignored) — **read `PROGRESS.md` first** |
 
-**Before working on Debate Club**, read `docs/debate-club/PROGRESS.md` (current state, next task, decision log) and `docs/debate-club/DESIGN.md` (why it works the way it does). They are maintained so a new session needs no verbal handoff — and `PROGRESS.md` is updated as part of each task, before committing.
+**`docs/` is gitignored and not part of the repo.** It exists only in this working copy, so a fresh clone won't have it. **Before working on Debate Club**, read `docs/debate-club/PROGRESS.md` (current state, next task, decision log) and `docs/debate-club/DESIGN.md` (why it works the way it does) if they're present. They're maintained so a session on this machine needs no verbal handoff — and `PROGRESS.md` is updated as part of each task, before committing. If `docs/` is missing (a fresh clone, a different machine), ask for a handoff instead of assuming none is needed.
 
 **Data flow (RAG-light):** `RagForm` (`app/rag/components/RagForm.tsx`, client component) uses `@ai-sdk/react`'s `useChat`/`Chat` with `DefaultChatTransport` pointed at `/api/rag/chat`. Submitting text or a URL posts to `app/api/rag/chat/route.ts`, which:
 
@@ -45,7 +45,7 @@ The whole handler body sits in one `try`. Every throw — including one from `re
 
 **Data model** (`prisma/schema.prisma`): `Source` (type `url`/`pdf`/`image`/`text`) 1—\* `Request` (`inputText`, `status`: `pending`/`completed`/`failed`) 1—1 `Summary` (`text`, `insights`).
 
-Debate Club adds one standalone table with no relations: `DebateCooldown` (`scope`: `model`/`gateway`, `target`, `until`, `reason`), unique on `[scope, target]` and upserted per target so it stays bounded at 18 rows. Availability is derived from `(until, now)` and never stored — see [`docs/debate-club/DESIGN.md`](docs/debate-club/DESIGN.md).
+Debate Club adds one standalone table with no relations: `DebateCooldown` (`scope`: `model`/`gateway`, `target`, `until`, `reason`), unique on `[scope, target]` and upserted per target so it stays bounded at 18 rows. Availability is derived from `(until, now)` and never stored — see `docs/debate-club/DESIGN.md` (local-only, gitignored).
 
 **Prisma specifics:** the generated client outputs to `app/generated/prisma` (not `node_modules`), is gitignored, and must be regenerated via `npx prisma generate` whenever the schema changes — tests import from `@/app/generated/prisma/client` and will fail to type-check if it's stale or missing. The app uses Prisma's driver-adapter pattern (`@prisma/adapter-pg` + a `pg.Pool`) rather than the default query engine. Every route handler imports the one shared client from `app/api/prismaClient.ts` — **do not construct a `PrismaClient` inline in a route.** `pg` opens up to 10 sockets per `Pool`, so a pool per route file made the connection ceiling grow with the route count, against a free-tier Postgres that caps direct connections near 60.
 
